@@ -2,5 +2,8 @@ library ../src/ur
 rewrite all Test/*
 database dbname=openid
 sql test.sql
+allow url http://*
+allow url https://*
+prefix http://localhost:8080/
 
 test

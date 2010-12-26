@@ -17,4 +17,5 @@ uw_unit uw_OpenidFfi_addInput(uw_context, uw_OpenidFfi_inputs, uw_Basis_string k
 
 uw_Basis_string uw_OpenidFfi_getOutput(uw_context, uw_OpenidFfi_outputs, uw_Basis_string key);
 
-uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context, uw_Basis_string url, uw_OpenidFfi_inputs);
+uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context, uw_Basis_string url, uw_OpenidFfi_inputs);
+uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context, uw_Basis_string fields);

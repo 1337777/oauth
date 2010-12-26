@@ -22,6 +22,8 @@ uw_Basis_string uw_OpenidFfi_localId(uw_context ctx, uw_OpenidFfi_discovery d) {
 }
 
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
+  
+
   curl_global_init(CURL_GLOBAL_ALL);
 
   return uw_unit_v;
@@ -177,7 +179,7 @@ static size_t write_buffer_data(void *buffer, size_t size, size_t nmemb, void *u
 
 const char curl_failure[] = "error\0Error fetching URL";
 
-uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string url, uw_OpenidFfi_inputs inps) {
+uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw_OpenidFfi_inputs inps) {
   uw_buffer *buf = uw_malloc(ctx, sizeof(uw_buffer));
   CURL *c = curl(ctx);
   CURLcode code;
@@ -224,4 +226,53 @@ uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string url, 
   }
 
   return buf;
+}
+
+static uw_Basis_string deurl(uw_context ctx, uw_Basis_string s) {
+  uw_Basis_string r = uw_malloc(ctx, strlen(s)), s2 = r;
+
+  for (; *s; ++s) {
+    if (s[0] == '%' && s[1] && s[2]) {
+      unsigned u;
+
+      sscanf(s+1, "%02x", &u);
+      *s2++ = u;
+      s += 2;
+    } else
+      *s2++ = *s;
+  }
+
+  *s2 = 0;
+  return r;
+}
+
+uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string fields) {
+  uw_OpenidFfi_outputs b = malloc(sizeof(uw_buffer));
+
+  uw_buffer_init(BUF_MAX, b, BUF_INIT);
+
+  while (*fields) {
+    char *equal = strchr(fields, '='), *and, *s;
+
+    if (!equal)
+      break;
+
+    *equal = 0;
+    s = deurl(ctx, fields);
+    uw_buffer_append(b, s, strlen(s));
+    uw_buffer_append(b, "", 1);
+
+    and = strchr(equal+1, '&');
+    if (and) {
+      *and = 0;
+      fields = and+1;
+    } else
+      fields = and = strchr(equal+1, 0);
+    s = deurl(ctx, equal+1);
+    uw_buffer_append(b, s, strlen(s));
+    uw_buffer_append(b, "", 1);
+  }
+
+  uw_buffer_append(b, "", 1);
+  return b;
 }
