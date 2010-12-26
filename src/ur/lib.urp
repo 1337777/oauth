@@ -1,6 +1,7 @@
 library config
 ffi openidFfi
-link -lurweb_openid
+link -lurweb_openid -lexpat
 effectful OpenidFfi.init
+effectful OpenidFfi.discover
 
 openid
