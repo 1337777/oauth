@@ -1,4 +1,6 @@
 library ../src/ur
 rewrite all Test/*
+database dbname=openid
+sql test.sql
 
 test

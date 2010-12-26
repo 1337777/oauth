@@ -3,6 +3,9 @@ ffi openidFfi
 link -lurweb_openid -lexpat
 effectful OpenidFfi.init
 effectful OpenidFfi.discover
+effectful OpenidFfi.createInputs
+effectful OpenidFfi.addInput
+effectful OpenidFfi.indirect
 
 $/option
 openid

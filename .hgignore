@@ -8,6 +8,7 @@ syntax: glob
 *.lo
 *.la
 *.exe
+*.sql
 
 *.cache
 *.log
