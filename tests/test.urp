@@ -1,0 +1,4 @@
+library ../src/ur
+rewrite all Test/*
+
+test

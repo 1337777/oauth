@@ -1,0 +1,6 @@
+library config
+ffi openidFfi
+link -lurweb_openid
+effectful OpenidFfi.init
+
+openid
