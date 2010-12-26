@@ -52,9 +52,16 @@ fun returnTo (qs : option queryString) =
         case OpenidFfi.getOutput os "openid.error" of
             Some v => error <xml>Authentication failed: {[v]}</xml>
           | None =>
-            case OpenidFfi.getOutput os "openid.identity" of
-                None => error <xml>Missing identity in OP response</xml>
-              | Some v => return <xml>Identity: {[v]}</xml>
+            case OpenidFfi.getOutput os "openid.mode" of
+                None => error <xml>No <tt>openid.mode</tt> in response</xml>
+              | Some mode =>
+                case mode of
+                    "cancel" => error <xml>You canceled the authentication!</xml>
+                  | "id_res" =>
+                    (case OpenidFfi.getOutput os "openid.identity" of
+                         None => error <xml>Missing identity in OP response</xml>
+                       | Some v => return <xml>Identity: {[v]}</xml>)
+                  | _ => error <xml>Unexpected <tt>openid.mode</tt>: <tt>{[mode]}</tt></xml>
 
 fun authenticate id =
     dy <- discover id;
