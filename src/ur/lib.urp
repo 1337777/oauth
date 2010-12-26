@@ -4,4 +4,5 @@ link -lurweb_openid -lexpat
 effectful OpenidFfi.init
 effectful OpenidFfi.discover
 
+$/option
 openid

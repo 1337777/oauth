@@ -6,6 +6,18 @@
 
 #include <openid.h>
 
+struct uw_OpenidFfi_discovery {
+  uw_Basis_string endpoint, localId;
+};
+
+uw_Basis_string uw_OpenidFfi_endpoint(uw_context ctx, uw_OpenidFfi_discovery d) {
+  return d->endpoint;
+}
+
+uw_Basis_string uw_OpenidFfi_localId(uw_context ctx, uw_OpenidFfi_discovery d) {
+  return d->localId;
+}
+
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -26,7 +38,7 @@ static CURL *curl(uw_context ctx) {
 
 typedef struct {
   uw_context ctx;
-  char *result;
+  uw_OpenidFfi_discovery d;
 } endpoint;
 
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
@@ -46,7 +58,7 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
     if (found) {
       for (attp = atts; *attp; attp += 2) {
         if (!strcmp(attp[0], "href")) {
-          ep->result = uw_strdup(ep->ctx, attp[1]);
+          ep->d->endpoint = uw_strdup(ep->ctx, attp[1]);
           return;
         }
       }
@@ -71,12 +83,15 @@ static size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp) {
   return size * nmemb;
 }
 
-uw_Basis_string uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id) {
+uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id) {
   char *s;
   CURL *c = curl(ctx);
   curl_data cd = {};
-  endpoint ep = {ctx};
+  uw_OpenidFfi_discovery dy = uw_malloc(ctx, sizeof(struct uw_OpenidFfi_discovery));
+  endpoint ep = {ctx, dy};
   CURLcode code;
+
+  dy->endpoint = dy->localId = NULL;
 
   if (!strchr(id, ':')) {
     id = uw_Basis_strcat(ctx, "http://", id);
@@ -101,8 +116,11 @@ uw_Basis_string uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id) {
   code = curl_easy_perform(c);
   uw_pop_cleanup(ctx);
 
-  if (code)
+  if (code || !ep.d->endpoint)
     return NULL;
-  else
-    return ep.result;
+  else {
+    uw_OpenidFfi_discovery *dyp = malloc(sizeof(uw_OpenidFfi_discovery));
+    *dyp = ep.d;
+    return dyp;
+  }
 }
