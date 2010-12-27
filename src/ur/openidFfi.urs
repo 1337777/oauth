@@ -14,3 +14,5 @@ val getOutput : outputs -> string -> option string
 
 val direct : string -> inputs -> transaction outputs
 val indirect : queryString -> transaction outputs
+
+val sha256 : string -> string

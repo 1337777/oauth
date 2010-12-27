@@ -1,5 +1,8 @@
 #include <string.h>
 
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/buffer.h>
 #include <openssl/sha.h>
 #include <curl/curl.h>
 #include <expat.h>
@@ -251,6 +254,8 @@ uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string field
 
   uw_buffer_init(BUF_MAX, b, BUF_INIT);
 
+  fields = uw_strdup(ctx, fields);
+
   while (*fields) {
     char *equal = strchr(fields, '='), *and, *s;
 
@@ -275,4 +280,32 @@ uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string field
 
   uw_buffer_append(b, "", 1);
   return b;
+}
+
+static uw_Basis_string base64(uw_context ctx, unsigned char *input, int length) {
+  BIO *bmem, *b64;
+  BUF_MEM *bptr;
+
+  b64 = BIO_new(BIO_f_base64());
+  bmem = BIO_new(BIO_s_mem());
+  b64 = BIO_push(b64, bmem);
+  BIO_write(b64, input, length);
+  (void)BIO_flush(b64);
+  BIO_get_mem_ptr(b64, &bptr);
+
+  char *buff = uw_malloc(ctx, bptr->length);
+  memcpy(buff, bptr->data, bptr->length-1);
+  buff[bptr->length-1] = 0;
+
+  BIO_free_all(b64);
+
+  return buff;
+}
+
+uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string s) {
+  unsigned char out[SHA256_DIGEST_LENGTH];
+
+  SHA256((unsigned char *)s, strlen(s), out);
+
+  return base64(ctx, out, sizeof out);
 }
