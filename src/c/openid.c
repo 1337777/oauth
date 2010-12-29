@@ -4,6 +4,7 @@
 #include <openssl/evp.h>
 #include <openssl/buffer.h>
 #include <openssl/sha.h>
+#include <openssl/hmac.h>
 #include <curl/curl.h>
 #include <expat.h>
 
@@ -25,8 +26,6 @@ uw_Basis_string uw_OpenidFfi_localId(uw_context ctx, uw_OpenidFfi_discovery d) {
 }
 
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
-  
-
   curl_global_init(CURL_GLOBAL_ALL);
 
   return uw_unit_v;
@@ -74,9 +73,6 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
   }
 }
 
-static void XMLCALL endElement(void *userData, const XML_Char *name) {
-}
-
 typedef struct {
   XML_Parser parser;
   int any_errors;
@@ -115,7 +111,7 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   cd.parser = XML_ParserCreate(NULL);
   XML_SetUserData(cd.parser, &ep);
   uw_push_cleanup(ctx, (void (*)(void *))XML_ParserFree, cd.parser);
-  XML_SetElementHandler(cd.parser, startElement, endElement);
+  XML_SetStartElementHandler(cd.parser, startElement);
 
   curl_easy_setopt(c, CURLOPT_URL, id);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_discovery_data);
@@ -215,14 +211,13 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
         break;
       }
 
+      *colon = 0;
+
       newline = strchr(colon+1, '\n');
 
-      if (!newline) {
-        *s = 0;
+      if (!newline)
         break;
-      }
 
-      *colon = 0;
       *newline = 0;
       s = newline+1;
     }
@@ -284,28 +279,44 @@ uw_OpenidFfi_outputs uw_OpenidFfi_indirect(uw_context ctx, uw_Basis_string field
 
 static uw_Basis_string base64(uw_context ctx, unsigned char *input, int length) {
   BIO *bmem, *b64;
-  BUF_MEM *bptr;
 
   b64 = BIO_new(BIO_f_base64());
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
   bmem = BIO_new(BIO_s_mem());
-  b64 = BIO_push(b64, bmem);
+  BIO_push(b64, bmem);
   BIO_write(b64, input, length);
   (void)BIO_flush(b64);
-  BIO_get_mem_ptr(b64, &bptr);
 
-  char *buff = uw_malloc(ctx, bptr->length);
-  memcpy(buff, bptr->data, bptr->length-1);
-  buff[bptr->length-1] = 0;
+  int len = BIO_ctrl_pending(bmem);
+  char *buff = uw_malloc(ctx, len+1);
+  BIO_read(bmem, buff, len);
+  buff[len] = 0;
 
   BIO_free_all(b64);
 
   return buff;
 }
 
-uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string s) {
-  unsigned char out[SHA256_DIGEST_LENGTH];
+static void unbase64(unsigned char *input, int length, unsigned char *buffer, int bufferLength)
+{
+  BIO *b64, *bmem;
 
-  SHA256((unsigned char *)s, strlen(s), out);
+  b64 = BIO_new(BIO_f_base64());
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+  bmem = BIO_new_mem_buf(input, length);
+  BIO_push(b64, bmem);
+  BIO_read(b64, buffer, bufferLength);
 
-  return base64(ctx, out, sizeof out);
+  BIO_free_all(bmem);
+}
+
+uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
+  unsigned char keyBin[SHA256_DIGEST_LENGTH], out[EVP_MAX_MD_SIZE];
+  unsigned outLen;
+
+  unbase64((unsigned char *)key, strlen(key), keyBin, sizeof keyBin);
+  memset(key, sizeof key, 0);
+
+  HMAC(EVP_sha256(), keyBin, sizeof keyBin, (unsigned char *)data, strlen(data), out, &outLen);
+  return base64(ctx, out, outLen);
 }

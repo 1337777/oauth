@@ -34,8 +34,8 @@ datatype association = Association of {Handle : string, Key : string} | AssError
 
 fun association url =
     secret <- oneOrNoRows1 (SELECT associations.Handle, associations.Key
-                             FROM associations
-                             WHERE associations.Endpoint = {[url]});
+                            FROM associations
+                            WHERE associations.Endpoint = {[url]});
     case secret of
         Some r => return (Association r)
       | None =>
@@ -43,6 +43,8 @@ fun association url =
         OpenidFfi.addInput is "openid.mode" "associate";
         OpenidFfi.addInput is "openid.assoc_type" "HMAC-SHA256";
         OpenidFfi.addInput is "openid.session_type" "no-encryption";
+
+        debug ("Contacting " ^ url);
 
         os <- OpenidFfi.direct url is;
         case OpenidFfi.getOutput os "error" of
@@ -57,6 +59,8 @@ fun association url =
                      dml (INSERT INTO associations (Endpoint, Handle, Key, Expires)
                           VALUES ({[url]}, {[handle]}, {[key]}, {[addSeconds tm expires]}));
                      return (Association {Handle = handle, Key = key}))
+              | (None, _, _) => return (AssError "Missing assoc_handle")
+              | (_, None, _) => return (AssError "Missing mac_key")
               | _ => return (AssError "Missing fields in response from OP")
 
 fun eatFragment s =
@@ -64,7 +68,7 @@ fun eatFragment s =
         Some (_, s') => s'
       | _ => s
 
-datatype handle_result = HandleOk of string | HandleError of string
+datatype handle_result = HandleOk of {Endpoint : string, Key : string} | HandleError of string
 
 fun verifyHandle os id =
     ep <- discover (eatFragment id);
@@ -81,7 +85,7 @@ fun verifyHandle os id =
                 if assoc.Handle <> handle then
                     return (HandleError "Association handles don't match")
                 else
-                    return (HandleOk ep)
+                    return (HandleOk {Endpoint = ep, Key = assoc.Key})
 
 table nonces : { Endpoint : string, Nonce : string, Expires : time }
   PRIMARY KEY (Endpoint, Nonce)
@@ -92,7 +96,7 @@ fun timeOfNonce s =
       | Some (date, s) =>
         case String.split s #"Z" of
             None => None
-          | Some (time, _) => read (date ^ " " ^ time)
+          | Some (time, _) => readUtc (date ^ " " ^ time)
 
 fun verifyNonce os ep =
     case OpenidFfi.getOutput os "openid.response_nonce" of
@@ -114,11 +118,12 @@ fun verifyNonce os ep =
                 if b then
                     return (Some "Duplicate nonce")
                 else
+                    debug ("Nonce expires: " ^ show exp);
                     dml (INSERT INTO nonces (Endpoint, Nonce, Expires)
                          VALUES ({[ep]}, {[nonce]}, {[exp]}));
                     return None
 
-fun verifySig os =
+fun verifySig os key =
     case OpenidFfi.getOutput os "openid.signed" of
         None => return (Some "Missing openid.signed in OP response")
       | Some signed =>
@@ -148,10 +153,11 @@ fun verifySig os =
                     None => return (Some "openid.signed mentions missing field")
                   | Some nvps =>
                     let
-                        val sign' = OpenidFfi.sha256 nvps
+                        val sign' = OpenidFfi.sha256 key nvps
                     in
                         debug ("Fields: " ^ signed);
                         debug ("Nvps: " ^ nvps);
+                        debug ("Key: " ^ key);
                         debug ("His: " ^ sign);
                         debug ("Mine: " ^ sign');
                         if sign' = sign then
@@ -181,7 +187,7 @@ fun returnTo (qs : option queryString) =
                          errO <- verifyHandle os id;
                          case errO of
                              HandleError s => error <xml>{[s]}</xml>
-                           | HandleOk ep =>
+                           | HandleOk {Endpoint = ep, Key = key} =>
                              errO <- verifyReturnTo os;
                              case errO of
                                  Some s => error <xml>{[s]}</xml>
@@ -190,7 +196,7 @@ fun returnTo (qs : option queryString) =
                                  case errO of
                                      Some s => error <xml>{[s]}</xml>
                                    | None =>
-                                     errO <- verifySig os;
+                                     errO <- verifySig os key;
                                      case errO of
                                          Some s => error <xml>{[s]}</xml>
                                        | None => return <xml>Identity: {[id]}</xml>)
