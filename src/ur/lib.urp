@@ -5,7 +5,10 @@ effectful OpenidFfi.init
 effectful OpenidFfi.discover
 effectful OpenidFfi.createInputs
 effectful OpenidFfi.addInput
+effectful OpenidFfi.direct
 effectful OpenidFfi.indirect
+effectful OpenidFfi.generate
+effectful OpenidFfi.compute
 
 $/string
 $/option

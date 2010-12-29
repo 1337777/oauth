@@ -5,6 +5,7 @@
 #include <openssl/buffer.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
+#include <openssl/dh.h>
 #include <curl/curl.h>
 #include <expat.h>
 
@@ -13,16 +14,15 @@
 #define BUF_MAX 10240
 #define BUF_INIT 1024
 
-struct uw_OpenidFfi_discovery {
-  uw_Basis_string endpoint, localId;
-};
+#define PRIME_LEN 64
+#define GENERATOR DH_GENERATOR_5
 
 uw_Basis_string uw_OpenidFfi_endpoint(uw_context ctx, uw_OpenidFfi_discovery d) {
-  return d->endpoint;
+  return d.endpoint;
 }
 
 uw_Basis_string uw_OpenidFfi_localId(uw_context ctx, uw_OpenidFfi_discovery d) {
-  return d->localId;
+  return d.localId;
 }
 
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
@@ -45,7 +45,7 @@ static CURL *curl(uw_context ctx) {
 
 typedef struct {
   uw_context ctx;
-  uw_OpenidFfi_discovery d;
+  uw_OpenidFfi_discovery *d;
 } endpoint;
 
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
@@ -91,7 +91,7 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   char *s;
   CURL *c = curl(ctx);
   curl_discovery_data cd = {};
-  uw_OpenidFfi_discovery dy = uw_malloc(ctx, sizeof(struct uw_OpenidFfi_discovery));
+  uw_OpenidFfi_discovery *dy = uw_malloc(ctx, sizeof(uw_OpenidFfi_discovery));
   endpoint ep = {ctx, dy};
   CURLcode code;
 
@@ -120,13 +120,10 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   code = curl_easy_perform(c);
   uw_pop_cleanup(ctx);
 
-  if (code || !ep.d->endpoint)
+  if (code || !dy->endpoint)
     return NULL;
-  else {
-    uw_OpenidFfi_discovery *dyp = malloc(sizeof(uw_OpenidFfi_discovery));
-    *dyp = ep.d;
-    return dyp;
-  }
+  else
+    return dy;
 }
 
 uw_OpenidFfi_inputs uw_OpenidFfi_createInputs(uw_context ctx) {
@@ -135,25 +132,28 @@ uw_OpenidFfi_inputs uw_OpenidFfi_createInputs(uw_context ctx) {
   return r;
 }
 
-static int okForPost(const char *s) {
-  for (; *s; ++s)
-    if (*s == '=' || *s == '&')
-      return 0;
-  return 1;
+static void postify(uw_OpenidFfi_inputs buf, uw_Basis_string s) {
+  for (; *s; ++s) {
+    switch (*s) {
+    case '=':
+      uw_buffer_append(buf, "%3D", 3);
+      break;
+    case '&':
+      uw_buffer_append(buf, "%26", 3);
+      break;
+    default:
+      uw_buffer_append(buf, s, 1);
+    }
+  }
 }
 
 uw_unit uw_OpenidFfi_addInput(uw_context ctx, uw_OpenidFfi_inputs buf, uw_Basis_string key, uw_Basis_string value) {
-  if (!okForPost(key))
-    uw_error(ctx, FATAL, "Invalid key for OpenID inputs");
-  if (!okForPost(value))
-    uw_error(ctx, FATAL, "Invalid value for OpenID inputs");
-
   if (uw_buffer_used(buf) > 0)
     uw_buffer_append(buf, "&", 1);
 
-  uw_buffer_append(buf, key, strlen(key));
+  postify(buf, key);
   uw_buffer_append(buf, "=", 1);
-  uw_buffer_append(buf, value, strlen(value));
+  postify(buf, value);
 
   return uw_unit_v;
 }
@@ -201,6 +201,8 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
     uw_buffer_append(buf, curl_failure, sizeof curl_failure);
   } else {
     char *s;
+
+    printf("Result: %s\n", buf->start);
 
     s = buf->start;
     while (*s) {
@@ -297,17 +299,30 @@ static uw_Basis_string base64(uw_context ctx, unsigned char *input, int length) 
   return buff;
 }
 
-static void unbase64(unsigned char *input, int length, unsigned char *buffer, int bufferLength)
+static int unbase64(unsigned char *input, int length, unsigned char *buffer, int bufferLength)
 {
   BIO *b64, *bmem;
+  int n;
 
   b64 = BIO_new(BIO_f_base64());
   BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
   bmem = BIO_new_mem_buf(input, length);
   BIO_push(b64, bmem);
-  BIO_read(b64, buffer, bufferLength);
+  n = BIO_read(b64, buffer, bufferLength);
 
   BIO_free_all(bmem);
+
+  return n;
+}
+
+uw_Basis_string uw_OpenidFfi_sha1(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
+  unsigned char keyBin[SHA_DIGEST_LENGTH], out[EVP_MAX_MD_SIZE];
+  unsigned outLen;
+
+  unbase64((unsigned char *)key, strlen(key), keyBin, sizeof keyBin);
+
+  HMAC(EVP_sha1(), keyBin, sizeof keyBin, (unsigned char *)data, strlen(data), out, &outLen);
+  return base64(ctx, out, outLen);
 }
 
 uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
@@ -315,8 +330,81 @@ uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string key, uw_Basi
   unsigned outLen;
 
   unbase64((unsigned char *)key, strlen(key), keyBin, sizeof keyBin);
-  memset(key, sizeof key, 0);
 
   HMAC(EVP_sha256(), keyBin, sizeof keyBin, (unsigned char *)data, strlen(data), out, &outLen);
   return base64(ctx, out, outLen);
+}
+
+static uw_Basis_string btwoc(uw_context ctx, const BIGNUM *n) {
+  int len = BN_num_bytes(n), i;
+  unsigned char bytes[len+1];
+
+  bytes[0] = 0;
+  BN_bn2bin(n, bytes+1);
+
+  for (i = 1; i <= len; ++i)
+    if (bytes[i]) {
+      if (bytes[i] & 0x80)
+        --i;
+      break;
+    }
+
+  if (i > len)
+    i = len;
+
+  return base64(ctx, bytes+i, len+1-i);
+}
+
+static BIGNUM *unbtwoc(uw_context ctx, uw_Basis_string s) {
+  unsigned char bytes[1024];
+  int len;
+
+  len = unbase64((unsigned char *)s, strlen(s), bytes, sizeof bytes);
+  return BN_bin2bn(bytes, len, NULL);
+}
+
+uw_Basis_string uw_OpenidFfi_modulus(uw_context ctx, uw_OpenidFfi_dh dh) {
+  return btwoc(ctx, dh->p);
+}
+
+uw_Basis_string uw_OpenidFfi_generator(uw_context ctx, uw_OpenidFfi_dh dh) {
+  return btwoc(ctx, dh->g);
+}
+
+uw_Basis_string uw_OpenidFfi_public(uw_context ctx, uw_OpenidFfi_dh dh) {
+  return btwoc(ctx, dh->pub_key);
+}
+
+static void free_DH(void *data, int will_retry) {
+  DH *dh = data;
+  DH_free(dh);
+}
+
+uw_OpenidFfi_dh uw_OpenidFfi_generate(uw_context ctx) {
+  DH *dh = DH_new();
+
+  uw_register_transactional(ctx, dh, NULL, NULL, free_DH);
+
+  DH_generate_parameters_ex(dh, PRIME_LEN, GENERATOR, NULL);
+
+  if (DH_generate_key(dh) != 1)
+    uw_error(ctx, FATAL, "Diffie-Hellman key generation failed");
+
+  return dh;
+}
+
+uw_Basis_string uw_OpenidFfi_compute(uw_context ctx, uw_OpenidFfi_dh dh, uw_Basis_string server_pub) {
+  BIGNUM *bn = unbtwoc(ctx, server_pub);
+  unsigned char secret[DH_size(dh)];
+  int size;
+
+  uw_push_cleanup(ctx, (void (*)(void *))BN_free, bn);
+
+  size = DH_compute_key(secret, bn, dh);
+  if (size == -1)
+    uw_error(ctx, FATAL, "Diffie-Hellman key computation failed");
+
+  uw_pop_cleanup(ctx);
+
+  return base64(ctx, secret, size);
 }
