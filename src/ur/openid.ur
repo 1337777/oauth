@@ -182,15 +182,16 @@ fun association atype stype url =
 
 fun eatFragment s =
     case String.split s #"#" of
-        Some (_, s') => s'
+        Some (s', _) => s'
       | _ => s
 
 datatype handle_result = HandleOk of {Endpoint : string, Typ : association_type, Key : string} | HandleError of string
 
 fun verifyHandle os id =
-    ep <- discover (eatFragment id);
+    id' <- return (eatFragment id);
+    ep <- discover id';
     case ep of
-        None => return (HandleError "Discovery failed on returned endpoint")
+        None => return (HandleError ("Discovery failed on returned identifier: " ^ id'))
       | Some ep =>
         case OpenidFfi.getOutput os "openid.assoc_handle" of
             None => return (HandleError "Missing association handle in response")
@@ -288,63 +289,67 @@ fun verifySig os atype key =
                   | Some (left, _) => return (Some ("openid.signed is missing required fields: " ^ show left))
             end
 
-fun returnTo (qs : option queryString) =
-    case qs of
-        None => error <xml>Empty query string for OpenID callback</xml>
-      | Some qs =>
-        os <- OpenidFfi.indirect qs;
-        case OpenidFfi.getOutput os "openid.error" of
-            Some v => error <xml>Authentication failed: {[v]}</xml>
-          | None =>
-            case OpenidFfi.getOutput os "openid.mode" of
-                None => error <xml>No <tt>openid.mode</tt> in response ({[qs]})</xml>
-              | Some mode =>
-                case mode of
-                    "cancel" => error <xml>You canceled the authentication!</xml>
-                  | "id_res" =>
-                    (case OpenidFfi.getOutput os "openid.identity" of
-                         None => error <xml>Missing identity in OP response</xml>
-                       | Some id =>
-                         errO <- verifyHandle os id;
-                         case errO of
-                             HandleError s => error <xml>{[s]}</xml>
-                           | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
-                             errO <- verifyReturnTo os;
-                             case errO of
-                                 Some s => error <xml>{[s]}</xml>
-                               | None =>
-                                 errO <- verifyNonce os ep;
+datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
+
+fun authenticate after r =
+    let
+        fun returnTo (qs : option queryString) =
+            case qs of
+                None => after (Failure "Empty query string for OpenID callback")
+              | Some qs =>
+                os <- OpenidFfi.indirect qs;
+                case OpenidFfi.getOutput os "openid.error" of
+                    Some v => after (Failure "Authentication failed: {[v]}")
+                  | None =>
+                    case OpenidFfi.getOutput os "openid.mode" of
+                        None => after (Failure "No openid.mode in response")
+                      | Some mode =>
+                        case mode of
+                            "cancel" => after Canceled
+                          | "id_res" =>
+                            (case OpenidFfi.getOutput os "openid.claimed_id" of
+                                 None => after (Failure "Missing identity in OP response")
+                               | Some id =>
+                                 errO <- verifyHandle os id;
                                  case errO of
-                                     Some s => error <xml>{[s]}</xml>
-                                   | None =>
-                                     errO <- verifySig os atype key;
+                                     HandleError s => after (Failure s)
+                                   | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
+                                     errO <- verifyReturnTo os;
                                      case errO of
-                                         Some s => error <xml>{[s]}</xml>
-                                       | None => return <xml>Identity: {[id]}</xml>)
-                  | _ => error <xml>Unexpected <tt>openid.mode</tt>: <tt>{[mode]}</tt></xml>
+                                         Some s => after (Failure s)
+                                       | None =>
+                                         errO <- verifyNonce os ep;
+                                         case errO of
+                                             Some s => after (Failure s)
+                                           | None =>
+                                             errO <- verifySig os atype key;
+                                             case errO of
+                                                 Some s => after (Failure s)
+                                               | None => after (AuthenticatedAs id))
+                          | _ => after (Failure ("Unexpected openid.mode: " ^ mode))
 
-and verifyReturnTo os =
-    case OpenidFfi.getOutput os "openid.return_to" of
-        None => return (Some "Missing return_to in OP response")
-      | Some rt =>
-        if rt <> show (effectfulUrl returnTo) then
-            return (Some "Wrong return_to in OP response")
-        else
-            return None
-
-fun authenticate atype stype id =
-    dy <- discover id;
-    case dy of
-        None => return "Discovery failed"
-      | Some dy =>
-        assoc <- association atype stype dy;
-        case assoc of
-            AssError msg => return ("Association failure: " ^ msg)
-          | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
-          | Association assoc =>
-            redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
-                             ^ id ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                             ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
+        and verifyReturnTo os =
+            case OpenidFfi.getOutput os "openid.return_to" of
+                None => return (Some "Missing return_to in OP response")
+              | Some rt =>
+                if rt <> show (effectfulUrl returnTo) then
+                    return (Some "Wrong return_to in OP response")
+                else
+                    return None
+    in
+        dy <- discover r.Identifier;
+        case dy of
+            None => return "Discovery failed"
+          | Some dy =>
+            assoc <- association r.AssociationType r.AssociationSessionType dy;
+            case assoc of
+                AssError msg => return ("Association failure: " ^ msg)
+              | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
+              | Association assoc =>
+                redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
+                                 ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
+    end
 
 task periodic 1 = fn () =>
                      dml (DELETE FROM discoveries WHERE Expires < CURRENT_TIMESTAMP);
