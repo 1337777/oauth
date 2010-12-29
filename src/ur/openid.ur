@@ -1,5 +1,6 @@
 val discoveryExpiry = 3600
 val nonceExpiry = 3600
+val nonceSkew = 3600
 
 task initialize = fn () => OpenidFfi.init
 
@@ -222,9 +223,10 @@ fun verifyNonce os ep =
             None => return (Some "Invalid timestamp in nonce")
           | Some tm =>
             now <- now;
-            exp <- return (addSeconds now nonceExpiry);
-            if tm < exp then
+            if tm < addSeconds now (-nonceExpiry) then
                 return (Some "Nonce timestamp is too old")
+            else if tm > addSeconds now nonceSkew then
+                return (Some ("Nonce timestamp is too far in the future: " ^ show tm ^ " (from " ^ nonce ^ ")"))
             else
                 b <- oneRowE1 (SELECT COUNT( * ) > 0
                                FROM nonces
@@ -234,9 +236,8 @@ fun verifyNonce os ep =
                 if b then
                     return (Some "Duplicate nonce")
                 else
-                    debug ("Nonce expires: " ^ show exp);
                     dml (INSERT INTO nonces (Endpoint, Nonce, Expires)
-                         VALUES ({[ep]}, {[nonce]}, {[exp]}));
+                         VALUES ({[ep]}, {[nonce]}, {[addSeconds now nonceExpiry]}));
                     return None
 
 fun verifySig os atype key =
@@ -246,7 +247,7 @@ fun verifySig os atype key =
         case OpenidFfi.getOutput os "openid.sig" of
             None => return (Some "Missing openid.sig in OP response")
           | Some sign => let
-                fun gatherNvps signed acc =
+                fun gatherNvps signed required acc =
                     let
                         val (this, next) =
                             case String.split signed #"," of
@@ -257,32 +258,34 @@ fun verifySig os atype key =
                             None => None
                           | Some value =>
                             let
+                                val required = List.filter (fn other => other <> this) required
                                 val acc = acc ^ this ^ ":" ^ value ^ "\n"
                             in
                                 case next of
-                                    None => Some acc
-                                  | Some next => gatherNvps next acc
+                                    None => Some (required, acc)
+                                  | Some next => gatherNvps next required acc
                             end
                     end
             in    
-                case gatherNvps signed "" of
+                case gatherNvps signed ("op_endpoint" :: "return_to" :: "response_nonce" :: "assoc_handle" :: "claimed_id" :: "identity" :: []) "" of
                     None => return (Some "openid.signed mentions missing field")
-                  | Some nvps =>
+                  | Some ([], nvps) =>
                     let
                         val sign' = case atype of
                                         HMAC_SHA256 => OpenidFfi.sha256 key nvps
                                       | HMAC_SHA1 => OpenidFfi.sha1 key nvps
                     in
-                        debug ("Fields: " ^ signed);
+                        (*debug ("Fields: " ^ signed);
                         debug ("Nvps: " ^ nvps);
                         debug ("Key: " ^ key);
                         debug ("His: " ^ sign);
-                        debug ("Mine: " ^ sign');
+                        debug ("Mine: " ^ sign');*)
                         if sign' = sign then
                             return None
                         else
                             return (Some "Signatures don't match")
                     end
+                  | Some (left, _) => return (Some ("openid.signed is missing required fields: " ^ show left))
             end
 
 fun returnTo (qs : option queryString) =
