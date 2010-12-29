@@ -1,6 +1,6 @@
 val discoveryExpiry = 3600
-val nonceExpiry = 3600
-val nonceSkew = 3600
+val nonceExpiry = 600
+val nonceSkew = 600
 
 task initialize = fn () => OpenidFfi.init
 
@@ -227,7 +227,7 @@ fun verifyNonce os ep =
             if tm < addSeconds now (-nonceExpiry) then
                 return (Some "Nonce timestamp is too old")
             else if tm > addSeconds now nonceSkew then
-                return (Some ("Nonce timestamp is too far in the future: " ^ show tm ^ " (from " ^ nonce ^ ")"))
+                return (Some "Nonce timestamp is too far in the future")
             else
                 b <- oneRowE1 (SELECT COUNT( * ) > 0
                                FROM nonces
@@ -291,9 +291,11 @@ fun verifySig os atype key =
 
 datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
 
+sequence nextNonce
+
 fun authenticate after r =
     let
-        fun returnTo (qs : option queryString) =
+        fun returnTo myNonce (qs : option queryString) =
             case qs of
                 None => after (Failure "Empty query string for OpenID callback")
               | Some qs =>
@@ -314,7 +316,7 @@ fun authenticate after r =
                                  case errO of
                                      HandleError s => after (Failure s)
                                    | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
-                                     errO <- verifyReturnTo os;
+                                     errO <- verifyReturnTo os myNonce;
                                      case errO of
                                          Some s => after (Failure s)
                                        | None =>
@@ -328,11 +330,11 @@ fun authenticate after r =
                                                | None => after (AuthenticatedAs id))
                           | _ => after (Failure ("Unexpected openid.mode: " ^ mode))
 
-        and verifyReturnTo os =
+        and verifyReturnTo os myNonce =
             case OpenidFfi.getOutput os "openid.return_to" of
                 None => return (Some "Missing return_to in OP response")
               | Some rt =>
-                if rt <> show (effectfulUrl returnTo) then
+                if rt <> show (effectfulUrl (returnTo myNonce)) then
                     return (Some "Wrong return_to in OP response")
                 else
                     return None
@@ -346,9 +348,10 @@ fun authenticate after r =
                 AssError msg => return ("Association failure: " ^ msg)
               | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
               | Association assoc =>
+                myNonce <- nextval nextNonce;
                 redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
                                  ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
+                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl (returnTo myNonce))))
     end
 
 task periodic 1 = fn () =>

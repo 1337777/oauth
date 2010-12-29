@@ -202,8 +202,6 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
   } else {
     char *s;
 
-    printf("Result: %s\n", buf->start);
-
     s = buf->start;
     while (*s) {
       char *colon = strchr(s, ':'), *newline;
