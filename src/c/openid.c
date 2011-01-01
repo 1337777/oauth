@@ -313,7 +313,7 @@ static int unbase64(unsigned char *input, int length, unsigned char *buffer, int
   return n;
 }
 
-uw_Basis_string uw_OpenidFfi_sha1(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
+uw_Basis_string uw_OpenidFfi_hmac_sha1(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
   unsigned char keyBin[SHA_DIGEST_LENGTH], out[EVP_MAX_MD_SIZE];
   unsigned outLen;
 
@@ -323,7 +323,7 @@ uw_Basis_string uw_OpenidFfi_sha1(uw_context ctx, uw_Basis_string key, uw_Basis_
   return base64(ctx, out, outLen);
 }
 
-uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
+uw_Basis_string uw_OpenidFfi_hmac_sha256(uw_context ctx, uw_Basis_string key, uw_Basis_string data) {
   unsigned char keyBin[SHA256_DIGEST_LENGTH], out[EVP_MAX_MD_SIZE];
   unsigned outLen;
 
@@ -393,16 +393,56 @@ uw_OpenidFfi_dh uw_OpenidFfi_generate(uw_context ctx) {
 
 uw_Basis_string uw_OpenidFfi_compute(uw_context ctx, uw_OpenidFfi_dh dh, uw_Basis_string server_pub) {
   BIGNUM *bn = unbtwoc(ctx, server_pub);
-  unsigned char secret[DH_size(dh)];
+  unsigned char secret[DH_size(dh)+1], *secretP;
   int size;
 
   uw_push_cleanup(ctx, (void (*)(void *))BN_free, bn);
 
-  size = DH_compute_key(secret, bn, dh);
+  size = DH_compute_key(secret+1, bn, dh);
   if (size == -1)
     uw_error(ctx, FATAL, "Diffie-Hellman key computation failed");
 
   uw_pop_cleanup(ctx);
 
-  return base64(ctx, secret, size);
+  if (size > 0 && (secret[1] & 0x80)) {
+    secret[0] = 0;
+    secretP = secret;
+    ++size;
+  } else
+    secretP = secret+1;
+
+  return base64(ctx, secretP, size);
+}
+
+uw_Basis_string uw_OpenidFfi_sha1(uw_context ctx, uw_Basis_string data) {
+  unsigned char dataBin[128], out[EVP_MAX_MD_SIZE];
+  int len;
+
+  len = unbase64((unsigned char *)data, strlen(data), dataBin, sizeof dataBin);
+
+  SHA1(dataBin, len, out);
+  return base64(ctx, out, SHA_DIGEST_LENGTH);
+}
+
+uw_Basis_string uw_OpenidFfi_sha256(uw_context ctx, uw_Basis_string data) {
+  unsigned char dataBin[128], out[EVP_MAX_MD_SIZE];
+  int len;
+
+  len = unbase64((unsigned char *)data, strlen(data), dataBin, sizeof dataBin);
+  
+  SHA256(dataBin, len, out);
+  return base64(ctx, out, SHA256_DIGEST_LENGTH);
+}
+
+uw_Basis_string uw_OpenidFfi_xor(uw_context ctx, uw_Basis_string s1, uw_Basis_string s2) {
+  unsigned char buf1[128], buf2[128], bufO[128];
+  int len1, len2, i;
+
+  len1 = unbase64((unsigned char *)s1, strlen(s1), buf1, sizeof buf1);
+  len2 = unbase64((unsigned char *)s2, strlen(s2), buf2, sizeof buf2);
+
+  for (i = 0; i < len1; ++i)
+    bufO[i] = buf1[i] ^ buf2[i % len2];
+
+  return base64(ctx, bufO, len1);
 }

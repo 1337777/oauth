@@ -140,7 +140,12 @@ fun associateDh url atype stype =
                 (case read expires of
                      None => return (AssError "Invalid 'expires_in' field")
                    | Some expires =>
-                     key <- OpenidFfi.compute dh pub;
+                     secret <- OpenidFfi.compute dh pub;
+                     digest <- return (case stype of
+                                           DH_SHA1 => OpenidFfi.sha1 secret
+                                         | DH_SHA256 => OpenidFfi.sha256 secret
+                                         | _ => error <xml>Non-DH stype in associateDh</xml>);
+                     key <- return (OpenidFfi.xor mac digest);
                      tm <- now;
                      dml (INSERT INTO associations (Endpoint, Handle, Typ, Key, Expires)
                           VALUES ({[url]}, {[handle]}, {[serialize atype]}, {[key]}, {[addSeconds tm expires]}));
@@ -177,6 +182,7 @@ fun association atype stype url =
             if alt.Atype = atype && alt.Stype = stype then
                 return (AssError "Suggested new modes match old ones!")
             else
+                debug "Renegotiating protocol";
                 newAssociation url alt.Atype alt.Stype
           | v => return v
 
@@ -273,8 +279,8 @@ fun verifySig os atype key =
                   | Some ([], nvps) =>
                     let
                         val sign' = case atype of
-                                        HMAC_SHA256 => OpenidFfi.sha256 key nvps
-                                      | HMAC_SHA1 => OpenidFfi.sha1 key nvps
+                                        HMAC_SHA256 => OpenidFfi.hmac_sha256 key nvps
+                                      | HMAC_SHA1 => OpenidFfi.hmac_sha1 key nvps
                     in
                         (*debug ("Fields: " ^ signed);
                         debug ("Nvps: " ^ nvps);
@@ -291,11 +297,9 @@ fun verifySig os atype key =
 
 datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
 
-sequence nextNonce
-
 fun authenticate after r =
     let
-        fun returnTo myNonce (qs : option queryString) =
+        fun returnTo (qs : option queryString) =
             case qs of
                 None => after (Failure "Empty query string for OpenID callback")
               | Some qs =>
@@ -316,7 +320,7 @@ fun authenticate after r =
                                  case errO of
                                      HandleError s => after (Failure s)
                                    | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
-                                     errO <- verifyReturnTo os myNonce;
+                                     errO <- verifyReturnTo os;
                                      case errO of
                                          Some s => after (Failure s)
                                        | None =>
@@ -330,11 +334,11 @@ fun authenticate after r =
                                                | None => after (AuthenticatedAs id))
                           | _ => after (Failure ("Unexpected openid.mode: " ^ mode))
 
-        and verifyReturnTo os myNonce =
+        and verifyReturnTo os =
             case OpenidFfi.getOutput os "openid.return_to" of
                 None => return (Some "Missing return_to in OP response")
               | Some rt =>
-                if rt <> show (effectfulUrl (returnTo myNonce)) then
+                if rt <> show (effectfulUrl returnTo) then
                     return (Some "Wrong return_to in OP response")
                 else
                     return None
@@ -348,10 +352,9 @@ fun authenticate after r =
                 AssError msg => return ("Association failure: " ^ msg)
               | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
               | Association assoc =>
-                myNonce <- nextval nextNonce;
                 redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
                                  ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl (returnTo myNonce))))
+                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
     end
 
 task periodic 1 = fn () =>
