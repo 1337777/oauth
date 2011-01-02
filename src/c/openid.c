@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 
 #include <openssl/bio.h>
@@ -133,17 +134,29 @@ uw_OpenidFfi_inputs uw_OpenidFfi_createInputs(uw_context ctx) {
 }
 
 static void postify(uw_OpenidFfi_inputs buf, uw_Basis_string s) {
+  char hex[4];
+
   for (; *s; ++s) {
-    switch (*s) {
+    if (isalnum(*s))
+      uw_buffer_append(buf, s, 1);
+    else {
+      sprintf(hex, "%%%02X", (unsigned char)*s);
+      uw_buffer_append(buf, hex, 3);
+    }
+
+    /*switch (*s) {
     case '=':
       uw_buffer_append(buf, "%3D", 3);
       break;
     case '&':
       uw_buffer_append(buf, "%26", 3);
       break;
+    case '%':
+      uw_buffer_append(buf, "%25", 3);
+      break;
     default:
       uw_buffer_append(buf, s, 1);
-    }
+    }*/
   }
 }
 
@@ -151,7 +164,7 @@ uw_unit uw_OpenidFfi_addInput(uw_context ctx, uw_OpenidFfi_inputs buf, uw_Basis_
   if (uw_buffer_used(buf) > 0)
     uw_buffer_append(buf, "&", 1);
 
-  postify(buf, key);
+  uw_buffer_append(buf, key, strlen(key));
   uw_buffer_append(buf, "=", 1);
   postify(buf, value);
 

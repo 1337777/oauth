@@ -217,14 +217,27 @@ fun verifyHandle os id =
                 else
                     return (HandleOk {Endpoint = ep, Typ = assoc.Typ, Key = assoc.Key})
 
-fun verifyStateless os ep id =
+fun verifyStateless os ep id expectInvalidation =
     os' <- OpenidFfi.direct ep (OpenidFfi.remode os "check_authentication");
     case OpenidFfi.getOutput os' "error" of
         Some msg => return (Failure ("Failure confirming message contents with OP: " ^ msg))
       | None =>
-        case OpenidFfi.getOutput os' "is_valid" of
-            Some "true" => return (AuthenticatedAs id)
-          | _ => return (Failure "OP does not confirm message contents")
+        let
+            fun finish () = case OpenidFfi.getOutput os' "is_valid" of
+                                Some "true" => return (AuthenticatedAs id)
+                              | _ => return (Failure "OP does not confirm message contents")
+        in
+            case OpenidFfi.getOutput os' "invalidate_handle" of
+                None =>
+                if expectInvalidation then
+                    return (Failure "Claimed invalidate_handle is not confirmed")
+                else
+                    finish ()
+              | Some handle =>
+                dml (DELETE FROM associations
+                     WHERE Endpoint = {[ep]} AND Handle = {[handle]});
+                finish ()
+        end
 
 table nonces : { Endpoint : string, Nonce : string, Expires : time }
   PRIMARY KEY (Endpoint, Nonce)
@@ -337,17 +350,22 @@ fun authenticate after r =
                                      case errO of
                                          HandleError s => after (Failure s)
                                        | NoAssociation ep =>
-                                         r <- verifyStateless os ep id;
+                                         r <- verifyStateless os ep id False;
                                          after r
                                        | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
-                                         errO <- verifyNonce os ep;
-                                         case errO of
-                                             Some s => after (Failure s)
+                                         case OpenidFfi.getOutput os "openid.invalidate_handle" of
+                                             Some _ =>
+                                             r <- verifyStateless os ep id True;
+                                             after r
                                            | None =>
-                                             errO <- verifySig os atype key;
+                                             errO <- verifyNonce os ep;
                                              case errO of
                                                  Some s => after (Failure s)
-                                               | None => after (AuthenticatedAs id))
+                                               | None =>
+                                                 errO <- verifySig os atype key;
+                                                 case errO of
+                                                     Some s => after (Failure s)
+                                                   | None => after (AuthenticatedAs id))
                           | _ => after (Failure ("Unexpected openid.mode: " ^ mode))
 
         and verifyReturnTo os =
