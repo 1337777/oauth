@@ -376,6 +376,10 @@ fun authenticate after r =
                     return (Some "Wrong return_to in OP response")
                 else
                     return None
+
+        val realmString = case r.Realm of
+                              None => ""
+                            | Some realm => "&openid.realm=" ^ realm
     in
         dy <- discover r.Identifier;
         case dy of
@@ -385,7 +389,7 @@ fun authenticate after r =
                 Stateless =>
                 redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
                                  ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.return_to="
-                                 ^ show (effectfulUrl returnTo)))
+                                 ^ show (effectfulUrl returnTo) ^ realmString))
               | Stateful ar =>
                 assoc <- association ar.AssociationType ar.AssociationSessionType dy;
                 case assoc of
@@ -394,7 +398,7 @@ fun authenticate after r =
                   | Association assoc =>
                     redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
                                      ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                     ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
+                                     ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
     end
 
 task periodic 1 = fn () =>

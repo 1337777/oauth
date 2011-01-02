@@ -7,9 +7,10 @@ fun afterward r = return <xml><body>
 
 fun auth r =
     msg <- Openid.authenticate afterward
-                               {Association = Openid.Stateless (* Openid.Stateful {AssociationType = Openid.HMAC_SHA256,
-                                                                                   AssociationSessionType = Openid.NoEncryption} *),
-                                Identifier = r.Id};
+                               {Association = Openid.Stateful {AssociationType = Openid.HMAC_SHA256,
+                                                               AssociationSessionType = Openid.NoEncryption},
+                                Identifier = r.Id,
+                                Realm = Some "http://localhost:8080/"};
     error <xml>{[msg]}</xml>
 
 fun main () = return <xml><body>
