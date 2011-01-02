@@ -446,3 +446,16 @@ uw_Basis_string uw_OpenidFfi_xor(uw_context ctx, uw_Basis_string s1, uw_Basis_st
 
   return base64(ctx, bufO, len1);
 }
+
+uw_OpenidFfi_inputs uw_OpenidFfi_remode(uw_context ctx, uw_OpenidFfi_outputs out, uw_Basis_string mode) {
+  uw_OpenidFfi_inputs in = uw_OpenidFfi_createInputs(ctx);
+  char *s;
+
+  for (s = out->start; *s; s = strchr(strchr(s, 0)+1, 0)+1)
+    if (!strcmp("openid.mode", s))
+      uw_OpenidFfi_addInput(ctx, in, "openid.mode", mode);
+    else
+      uw_OpenidFfi_addInput(ctx, in, s, strchr(s, 0)+1);
+
+  return in;
+}

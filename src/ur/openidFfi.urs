@@ -29,3 +29,5 @@ val public : dh -> string
 val generate : transaction dh
 val compute : dh -> string -> transaction string
 val xor : string -> string -> string
+
+val remode : outputs -> string -> inputs

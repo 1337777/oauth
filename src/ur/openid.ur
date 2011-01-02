@@ -30,6 +30,10 @@ val createInputs =
 
 datatype association_type = HMAC_SHA1 | HMAC_SHA256
 datatype association_session_type = NoEncryption | DH_SHA1 | DH_SHA256
+datatype association_mode =
+         Stateless
+       | Stateful of {AssociationType : association_type,
+                      AssociationSessionType : association_session_type}
 
 table associations : { Endpoint : string, Handle : string, Typ : serialized association_type, Key : string, Expires : time }
   PRIMARY KEY Endpoint
@@ -191,7 +195,9 @@ fun eatFragment s =
         Some (s', _) => s'
       | _ => s
 
-datatype handle_result = HandleOk of {Endpoint : string, Typ : association_type, Key : string} | HandleError of string
+datatype handle_result = HandleOk of {Endpoint : string, Typ : association_type, Key : string} | NoAssociation of string | HandleError of string
+
+datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
 
 fun verifyHandle os id =
     id' <- return (eatFragment id);
@@ -204,12 +210,21 @@ fun verifyHandle os id =
           | Some handle =>
             assoc <- oldAssociation ep;
             case assoc of
-                None => return (HandleError "Couldn't find association handle")
+                None => return (NoAssociation ep)
               | Some assoc =>
                 if assoc.Handle <> handle then
                     return (HandleError "Association handles don't match")
                 else
                     return (HandleOk {Endpoint = ep, Typ = assoc.Typ, Key = assoc.Key})
+
+fun verifyStateless os ep id =
+    os' <- OpenidFfi.direct ep (OpenidFfi.remode os "check_authentication");
+    case OpenidFfi.getOutput os' "error" of
+        Some msg => return (Failure ("Failure confirming message contents with OP: " ^ msg))
+      | None =>
+        case OpenidFfi.getOutput os' "is_valid" of
+            Some "true" => return (AuthenticatedAs id)
+          | _ => return (Failure "OP does not confirm message contents")
 
 table nonces : { Endpoint : string, Nonce : string, Expires : time }
   PRIMARY KEY (Endpoint, Nonce)
@@ -295,8 +310,6 @@ fun verifySig os atype key =
                   | Some (left, _) => return (Some ("openid.signed is missing required fields: " ^ show left))
             end
 
-datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
-
 fun authenticate after r =
     let
         fun returnTo (qs : option queryString) =
@@ -305,7 +318,7 @@ fun authenticate after r =
               | Some qs =>
                 os <- OpenidFfi.indirect qs;
                 case OpenidFfi.getOutput os "openid.error" of
-                    Some v => after (Failure "Authentication failed: {[v]}")
+                    Some v => after (Failure ("Authentication failed: " ^ v))
                   | None =>
                     case OpenidFfi.getOutput os "openid.mode" of
                         None => after (Failure "No openid.mode in response")
@@ -316,14 +329,17 @@ fun authenticate after r =
                             (case OpenidFfi.getOutput os "openid.claimed_id" of
                                  None => after (Failure "Missing identity in OP response")
                                | Some id =>
-                                 errO <- verifyHandle os id;
+                                 errO <- verifyReturnTo os;
                                  case errO of
-                                     HandleError s => after (Failure s)
-                                   | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
-                                     errO <- verifyReturnTo os;
+                                     Some s => after (Failure s)
+                                   | None =>
+                                     errO <- verifyHandle os id;
                                      case errO of
-                                         Some s => after (Failure s)
-                                       | None =>
+                                         HandleError s => after (Failure s)
+                                       | NoAssociation ep =>
+                                         r <- verifyStateless os ep id;
+                                         after r
+                                       | HandleOk {Endpoint = ep, Typ = atype, Key = key} =>
                                          errO <- verifyNonce os ep;
                                          case errO of
                                              Some s => after (Failure s)
@@ -347,14 +363,20 @@ fun authenticate after r =
         case dy of
             None => return "Discovery failed"
           | Some dy =>
-            assoc <- association r.AssociationType r.AssociationSessionType dy;
-            case assoc of
-                AssError msg => return ("Association failure: " ^ msg)
-              | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
-              | Association assoc =>
+            case r.Association of
+                Stateless =>
                 redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
-                                 ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                 ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
+                                 ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.return_to="
+                                 ^ show (effectfulUrl returnTo)))
+              | Stateful ar =>
+                assoc <- association ar.AssociationType ar.AssociationSessionType dy;
+                case assoc of
+                    AssError msg => return ("Association failure: " ^ msg)
+                  | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
+                  | Association assoc =>
+                    redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
+                                     ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                     ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo)))
     end
 
 task periodic 1 = fn () =>

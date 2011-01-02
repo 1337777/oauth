@@ -39,3 +39,5 @@ uw_Basis_string uw_OpenidFfi_public(uw_context, uw_OpenidFfi_dh);
 uw_OpenidFfi_dh uw_OpenidFfi_generate(uw_context);
 uw_Basis_string uw_OpenidFfi_compute(uw_context, uw_OpenidFfi_dh, uw_Basis_string server_pub);
 uw_Basis_string uw_OpenidFfi_xor(uw_context, uw_Basis_string, uw_Basis_string);
+
+uw_OpenidFfi_inputs uw_OpenidFfi_remode(uw_context, uw_OpenidFfi_outputs, uw_Basis_string mode);
