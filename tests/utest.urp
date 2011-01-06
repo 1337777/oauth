@@ -1,10 +1,11 @@
 path META=../../meta
 library ../src/ur
-rewrite all Test/*
+rewrite all Utest/*
 database dbname=openid
-sql test.sql
+sql utest.sql
 allow url http://*
 allow url https://*
+allow url /*
 prefix http://localhost:8080/
 
-test
+utest
