@@ -9,6 +9,7 @@ effectful OpenidFfi.direct
 effectful OpenidFfi.indirect
 effectful OpenidFfi.generate
 effectful OpenidFfi.compute
+library $META
 
 $/string
 $/option

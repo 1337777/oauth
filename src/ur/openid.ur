@@ -7,7 +7,13 @@ task initialize = fn () => OpenidFfi.init
 table discoveries : { Identifier : string, Endpoint : string, Expires : time }
   PRIMARY KEY Identifier
 
+fun eatFragment s =
+    case String.split s #"#" of
+        Some (s', _) => s'
+      | _ => s
+
 fun discover s =
+    s <- return (eatFragment s);
     endpoint <- oneOrNoRowsE1 (SELECT (discoveries.Endpoint)
                                FROM discoveries
                                WHERE discoveries.Identifier = {[s]});
@@ -190,11 +196,6 @@ fun association atype stype url =
                 newAssociation url alt.Atype alt.Stype
           | v => return v
 
-fun eatFragment s =
-    case String.split s #"#" of
-        Some (s', _) => s'
-      | _ => s
-
 datatype handle_result = HandleOk of {Endpoint : string, Typ : association_type, Key : string} | NoAssociation of string | HandleError of string
 
 datatype authentication = AuthenticatedAs of string | Canceled | Failure of string
@@ -310,11 +311,6 @@ fun verifySig os atype key =
                                         HMAC_SHA256 => OpenidFfi.hmac_sha256 key nvps
                                       | HMAC_SHA1 => OpenidFfi.hmac_sha1 key nvps
                     in
-                        (*debug ("Fields: " ^ signed);
-                        debug ("Nvps: " ^ nvps);
-                        debug ("Key: " ^ key);
-                        debug ("His: " ^ sign);
-                        debug ("Mine: " ^ sign');*)
                         if sign' = sign then
                             return None
                         else
@@ -388,7 +384,8 @@ fun authenticate after r =
             case r.Association of
                 Stateless =>
                 redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
-                                 ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.return_to="
+                                 ^ eatFragment r.Identifier
+                                 ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.return_to="
                                  ^ show (effectfulUrl returnTo) ^ realmString))
               | Stateful ar =>
                 assoc <- association ar.AssociationType ar.AssociationSessionType dy;
@@ -397,7 +394,8 @@ fun authenticate after r =
                   | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
                   | Association assoc =>
                     redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.claimed_id="
-                                     ^ r.Identifier ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                     ^ eatFragment r.Identifier
+                                     ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
                                      ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
     end
 

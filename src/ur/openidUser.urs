@@ -1,7 +1,16 @@
 functor Make(M: sig
                  con cols :: {Type}
                  constraint [Id] ~ cols
+                 val folder : folder cols
+                 val inj : $(map sql_injectable cols)
                  (* Extra columns to add to the user database table *)
+
+                 type creationState
+                 type creationData
+                 val creationState : transaction creationState
+                 val render : creationState -> xtable
+                 val tabulate : creationState -> signal creationData
+                 val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]] -> creationData -> transaction $cols
 
                  val sessionLifetime : int
                  (* Number of seconds a session may live *)
@@ -17,6 +26,8 @@ functor Make(M: sig
 
                  val realm : option string
                  (* See end of [Openid] module's documentation for the meaning of realms *)
+
+                 val formClass : css_class
              end) : sig
 
     type user

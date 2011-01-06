@@ -1,12 +1,22 @@
 functor Make(M: sig
                  con cols :: {Type}
                  constraint [Id] ~ cols
+                 val folder : folder cols
+                 val inj : $(map sql_injectable cols)
+
+                 type creationState
+                 type creationData
+                 val creationState : transaction creationState
+                 val render : creationState -> xtable
+                 val tabulate : creationState -> signal creationData
+                 val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]] -> creationData -> transaction $cols
 
                  val sessionLifetime : int
                  val afterLogout : url
                  val secureCookies : bool
                  val association : Openid.association_mode
                  val realm : option string
+                 val formClass : css_class
              end) = struct
 
     type user = string
@@ -26,6 +36,13 @@ functor Make(M: sig
 
     cookie signingUp : {Session : int, Key : int}
     cookie login : {User : user, Session : int, Key : int}
+
+    val currentUrl =
+        b <- currentUrlHasPost;
+        if b then
+            return M.afterLogout
+        else
+            currentUrl
 
     val current =
         login <- getCookie login;
@@ -49,11 +66,66 @@ functor Make(M: sig
                 else
                     error <xml>Session not authorized to act as user</xml>
 
+    fun validUser s = String.length s > 0 && String.length s < 20
+                      && String.all Char.isAlnum s
+
     fun main wrap =
         let
             fun logout () =
                 clearCookie login;
                 redirect M.afterLogout
+
+            fun signupDetails after =
+                let
+                    fun finishSignup uid data =
+                        if not (validUser uid) then
+                            return (Some "That username is not valid.  It must be between 1 and 19 characters long, containing only letters and numbers.")
+                        else
+                            used <- oneRowE1 (SELECT COUNT( * ) > 0
+                                              FROM user
+                                              WHERE user.Id = {[uid]});
+                            if used then
+                                return (Some "That username is taken.  Please choose another.")
+                            else
+                                ses <- getCookie signingUp;
+                                case ses of
+                                    None => return (Some "Missing session cookie")
+                                  | Some ses =>
+                                    ident <- oneOrNoRowsE1 (SELECT (session.Identifier)
+                                                            FROM session
+                                                            WHERE session.Id = {[ses.Session]}
+                                                              AND session.Key = {[ses.Key]});
+                                    case ident of
+                                        None => return (Some "Invalid session data")
+                                      | Some None => return (Some "Session has no associated identifier")
+                                      | Some (Some ident) =>
+                                        clearCookie signingUp;
+                                        setCookie login {Value = {User = uid} ++ ses,
+                                                         Expires = None,
+                                                         Secure = M.secureCookies};
+
+                                        cols <- M.choose user data;
+                                        dml (insert user ({Id = (SQL {[uid]})} ++ @Sql.sqexps M.folder M.inj cols));
+                                        dml (INSERT INTO identity (User, Identifier)
+                                             VALUES ({[uid]}, {[ident]}));
+                                        redirect (bless after)
+                in
+                    uid <- source "";
+                    cs <- M.creationState;
+
+                    wrap "Your User Details" <xml>
+                      <table class={M.formClass}>
+                        <tr> <th class={M.formClass}>Username:</th> <td><ctextbox source={uid}/></td> </tr>
+                        {M.render cs}
+                        <tr> <td><button value="Create Account" onclick={uid <- get uid;
+                                                                         data <- Basis.current (M.tabulate cs);
+                                                                         res <- rpc (finishSignup uid data);
+                                                                         case res of
+                                                                             None => redirect (bless after)
+                                                                           | Some msg => alert msg}/></td> </tr>
+                      </table>
+                    </xml>
+                end
 
             fun opCallback after ses res =
                 case res of
@@ -73,7 +145,10 @@ functor Make(M: sig
                             if invalid then
                                 error <xml>Invalid or expired session</xml>
                             else
-                                return <xml>I now believe that you are {[ident]}.</xml>
+                                dml (UPDATE session
+                                     SET Identifier = {[Some ident]}
+                                     WHERE Id = {[signup.Session]});
+                                signupDetails after
                       | None =>
                         login <- getCookie login;
                         case login of
@@ -91,7 +166,7 @@ functor Make(M: sig
                                 else
                                     dml (UPDATE session
                                          SET Identifier = {[Some ident]}
-                                         WHERE Key = {[login.Key]});
+                                         WHERE Id = {[login.Session]});
                                     redirect (bless after)
 
             fun newSession () =
@@ -102,7 +177,7 @@ functor Make(M: sig
                      VALUES ({[ses]}, {[key]}, NULL, {[addSeconds now M.sessionLifetime]}));
                 return {Session = ses, Key = key}
 
-            fun logon r =
+            fun logon after r =
                 ident <- oneOrNoRowsE1 (SELECT (identity.Identifier)
                                         FROM identity
                                         WHERE identity.User = {[r.User]}
@@ -114,8 +189,6 @@ functor Make(M: sig
                     setCookie login {Value = r ++ ses,
                                      Expires = None,
                                      Secure = M.secureCookies};
-                    after <- currentUrl;
-                    after <- return (show after);
                     ses <- return ses.Session;
                     msg <- Openid.authenticate (opCallback after ses)
                            {Association = M.association,
@@ -145,10 +218,11 @@ functor Make(M: sig
                 </xml>
         in
             cur <- current;
+            here <- currentUrl;
             case cur of
                 Some cur => return <xml>Logged in as {[cur]}. <a link={logout ()}>[Log out]</a></xml>
               | None => return <xml>
-                <form><textbox{#User}/> <submit value="Log In" action={logon}/></form>
+                <form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form>
                 <a link={signup ()}>Sign up</a>
               </xml>
         end
