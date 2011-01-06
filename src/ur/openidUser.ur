@@ -54,7 +54,7 @@ functor Make(M: sig
                                     WHERE session.Id = {[login.Session]}
                                       AND session.Key = {[login.Key]});
             case ident of
-                None => error <xml>Invalid or expired session</xml>
+                None => return None
               | Some None => return None
               | Some (Some ident) =>
                 valid <- oneRowE1 (SELECT COUNT( * ) > 0
