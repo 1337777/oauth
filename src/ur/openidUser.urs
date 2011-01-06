@@ -28,6 +28,9 @@ functor Make(M: sig
                  val render : creationState -> xtable
                  (* Display widgets. *)
 
+                 val ready : creationState -> signal bool
+                 (* Is the data ready to send? *)
+
                  val tabulate : creationState -> signal creationData
                  (* Functionalize current state. *)
 

@@ -8,6 +8,7 @@ functor Make(M: sig
                  type creationData
                  val creationState : transaction creationState
                  val render : creationState -> xtable
+                 val ready : creationState -> signal bool
                  val tabulate : creationState -> signal creationData
                  val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]] -> creationData -> transaction $cols
 
@@ -117,12 +118,17 @@ functor Make(M: sig
                       <table class={M.formClass}>
                         <tr> <th class={M.formClass}>Username:</th> <td><ctextbox source={uid}/></td> </tr>
                         {M.render cs}
-                        <tr> <td><button value="Create Account" onclick={uid <- get uid;
-                                                                         data <- Basis.current (M.tabulate cs);
-                                                                         res <- rpc (finishSignup uid data);
-                                                                         case res of
-                                                                             None => redirect (bless after)
-                                                                           | Some msg => alert msg}/></td> </tr>
+                        <tr> <td><dyn signal={b <- M.ready cs;
+                                              return (if b then
+                                                          <xml><button value="Create Account"
+                                                                       onclick={uid <- get uid;
+                                                                                data <- Basis.current (M.tabulate cs);
+                                                                                res <- rpc (finishSignup uid data);
+                                                                                case res of
+                                                                                    None => redirect (bless after)
+                                                                                  | Some msg => alert msg}/></xml>
+                                                      else
+                                                          <xml/>)}/></td> </tr>
                       </table>
                     </xml>
                 end
