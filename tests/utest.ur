@@ -18,6 +18,8 @@ structure U = OpenidUser.Make(struct
                                     <tr> <th class={inputs}>Name:</th> <td><ctextbox source={r.Nam}/></td> </tr>
                                   </xml>
 
+                                  fun ready _ = return True
+
                                   fun tabulate r =
                                       n <- signal r.Nam;
                                       return {Nam = n}

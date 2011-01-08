@@ -234,6 +234,6 @@ functor Make(M: sig
         end
 
     task periodic 60 = fn () => dml (DELETE FROM session
-                                     WHERE Expires >= CURRENT_TIMESTAMP)
+                                     WHERE Expires < CURRENT_TIMESTAMP)
 
 end
