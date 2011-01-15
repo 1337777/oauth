@@ -399,7 +399,7 @@ fun authenticate after r =
                                      ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
     end
 
-task periodic 1 = fn () =>
-                     dml (DELETE FROM discoveries WHERE Expires < CURRENT_TIMESTAMP);
-                     dml (DELETE FROM associations WHERE Expires < CURRENT_TIMESTAMP);
-                     dml (DELETE FROM nonces WHERE Expires < CURRENT_TIMESTAMP)
+task periodic 60 = fn () =>
+                      dml (DELETE FROM discoveries WHERE Expires < CURRENT_TIMESTAMP);
+                      dml (DELETE FROM associations WHERE Expires < CURRENT_TIMESTAMP);
+                      dml (DELETE FROM nonces WHERE Expires < CURRENT_TIMESTAMP)

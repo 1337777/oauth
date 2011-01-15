@@ -35,8 +35,11 @@ functor Make(M: sig
     table session : {Id : int, Key : int, Identifier : option string, Expires : time}
       PRIMARY KEY Id
 
-    cookie signingUp : {Session : int, Key : int}
-    cookie login : {User : user, Session : int, Key : int}
+    datatype authMode =
+             SigningUp of {Session : int, Key : int}
+           | LoggedIn of {User : user, Session : int, Key : int}
+
+    cookie auth : authMode
 
     val currentUrl =
         b <- currentUrlHasPost;
@@ -46,26 +49,26 @@ functor Make(M: sig
             currentUrl
 
     val current =
-        login <- getCookie login;
+        login <- getCookie auth;
         case login of
-            None => return None
-          | Some login =>
-            ident <- oneOrNoRowsE1 (SELECT (session.Identifier)
-                                    FROM session
-                                    WHERE session.Id = {[login.Session]}
-                                      AND session.Key = {[login.Key]});
-            case ident of
-                None => return None
-              | Some None => return None
-              | Some (Some ident) =>
-                valid <- oneRowE1 (SELECT COUNT( * ) > 0
-                                   FROM identity
-                                   WHERE identity.User = {[login.User]}
-                                     AND identity.Identifier = {[ident]});
-                if valid then
-                    return (Some login.User)
-                else
-                    error <xml>Session not authorized to act as user</xml>
+            Some (LoggedIn login) =>
+            (ident <- oneOrNoRowsE1 (SELECT (session.Identifier)
+                                     FROM session
+                                     WHERE session.Id = {[login.Session]}
+                                       AND session.Key = {[login.Key]});
+             case ident of
+                 None => return None
+               | Some None => return None
+               | Some (Some ident) =>
+                 valid <- oneRowE1 (SELECT COUNT( * ) > 0
+                                    FROM identity
+                                    WHERE identity.User = {[login.User]}
+                                      AND identity.Identifier = {[ident]});
+                 if valid then
+                     return (Some login.User)
+                 else
+                     error <xml>Session not authorized to act as user</xml>)
+          | _ => return None
 
     fun validUser s = String.length s > 0 && String.length s < 20
                       && String.all Char.isAlnum s
@@ -73,7 +76,7 @@ functor Make(M: sig
     fun main wrap =
         let
             fun logout () =
-                clearCookie login;
+                clearCookie auth;
                 redirect M.afterLogout
 
             fun signupDetails after =
@@ -88,10 +91,11 @@ functor Make(M: sig
                             if used then
                                 return (Some "That username is taken.  Please choose another.")
                             else
-                                ses <- getCookie signingUp;
+                                ses <- getCookie auth;
                                 case ses of
                                     None => return (Some "Missing session cookie")
-                                  | Some ses =>
+                                  | Some (LoggedIn _) => return (Some "Session cookie is for already logged-in user")
+                                  | Some (SigningUp ses) =>
                                     ident <- oneOrNoRowsE1 (SELECT (session.Identifier)
                                                             FROM session
                                                             WHERE session.Id = {[ses.Session]}
@@ -100,10 +104,9 @@ functor Make(M: sig
                                         None => return (Some "Invalid session data")
                                       | Some None => return (Some "Session has no associated identifier")
                                       | Some (Some ident) =>
-                                        clearCookie signingUp;
-                                        setCookie login {Value = {User = uid} ++ ses,
-                                                         Expires = None,
-                                                         Secure = M.secureCookies};
+                                        setCookie auth {Value = LoggedIn ({User = uid} ++ ses),
+                                                        Expires = None,
+                                                        Secure = M.secureCookies};
 
                                         cols <- M.choose user data;
                                         dml (insert user ({Id = (SQL {[uid]})} ++ @Sql.sqexps M.folder M.inj cols));
@@ -138,9 +141,9 @@ functor Make(M: sig
                     Openid.Canceled => error <xml>You canceled the login process.</xml>
                   | Openid.Failure s => error <xml>Login failed: {[s]}</xml>
                   | Openid.AuthenticatedAs ident =>
-                    signup <- getCookie signingUp;
-                    case signup of
-                        Some signup =>
+                    av <- getCookie auth;
+                    case av of
+                        Some (SigningUp signup) =>
                         if signup.Session <> ses then
                             error <xml>Session has changed suspiciously</xml>
                         else
@@ -155,25 +158,22 @@ functor Make(M: sig
                                      SET Identifier = {[Some ident]}
                                      WHERE Id = {[signup.Session]});
                                 signupDetails after
-                      | None =>
-                        login <- getCookie login;
-                        case login of
-                            None => error <xml>Missing session cookie</xml>
-                          | Some login =>
-                            if login.Session <> ses then
-                                error <xml>Session has changed suspiciously</xml>
+                      | Some (LoggedIn login) =>
+                        if login.Session <> ses then
+                            error <xml>Session has changed suspiciously</xml>
+                        else
+                            invalid <- oneRowE1 (SELECT COUNT( * ) = 0
+                                                 FROM session
+                                                 WHERE session.Id = {[login.Session]}
+                                                   AND session.Key = {[login.Key]});
+                            if invalid then
+                                error <xml>Invalid or expired session</xml>
                             else
-                                invalid <- oneRowE1 (SELECT COUNT( * ) = 0
-                                                     FROM session
-                                                     WHERE session.Id = {[login.Session]}
-                                                       AND session.Key = {[login.Key]});
-                                if invalid then
-                                    error <xml>Invalid or expired session</xml>
-                                else
-                                    dml (UPDATE session
-                                         SET Identifier = {[Some ident]}
-                                         WHERE Id = {[login.Session]});
-                                    redirect (bless after)
+                                dml (UPDATE session
+                                     SET Identifier = {[Some ident]}
+                                     WHERE Id = {[login.Session]});
+                                redirect (bless after)
+                      | None => error <xml>Missing session cookie</xml>
 
             fun newSession () =
                 ses <- nextval sessionIds;
@@ -192,9 +192,9 @@ functor Make(M: sig
                     None => error <xml>Username not found</xml>
                   | Some ident =>
                     ses <- newSession ();
-                    setCookie login {Value = r ++ ses,
-                                     Expires = None,
-                                     Secure = M.secureCookies};
+                    setCookie auth {Value = LoggedIn (r ++ ses),
+                                    Expires = None,
+                                    Secure = M.secureCookies};
                     ses <- return ses.Session;
                     msg <- Openid.authenticate (opCallback after ses)
                            {Association = M.association,
@@ -204,9 +204,9 @@ functor Make(M: sig
 
             fun doSignup after r =
                 ses <- newSession ();
-                setCookie signingUp {Value = ses,
-                                     Expires = None,
-                                     Secure = M.secureCookies};
+                setCookie auth {Value = SigningUp ses,
+                                Expires = None,
+                                Secure = M.secureCookies};
                 ses <- return ses.Session;
                 msg <- Openid.authenticate (opCallback after ses)
                                            {Association = M.association,
@@ -214,12 +214,11 @@ functor Make(M: sig
                                             Identifier = r.Identifier};
                 error <xml>Login with your identity provider failed: {[msg]}</xml>
 
-            fun signup () =
-                after <- currentUrl;
+            fun signup after =
                 wrap "Account Signup" <xml>
                   <form>
                     OpenID Identifier: <textbox{#Identifier}/><br/>
-                    <submit value="Sign Up" action={doSignup (show after)}/>
+                    <submit value="Sign Up" action={doSignup after}/>
                   </form>
                 </xml>
         in
@@ -229,7 +228,7 @@ functor Make(M: sig
                 Some cur => return <xml>Logged in as {[cur]}. <a link={logout ()}>[Log out]</a></xml>
               | None => return <xml>
                 <form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form>
-                <a link={signup ()}>Sign up</a>
+                <a link={signup (show here)}>Sign up</a>
               </xml>
         end
 
