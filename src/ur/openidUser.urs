@@ -59,6 +59,11 @@ functor Make(M: sig
                  val formClass : css_class
                  (* CSS class for <table>, <th>, and <td> elements used in
                   * sign-up form *)
+
+                 val fakeId : option string
+                 (* If set, this string is always accepted as a verified
+                  * identifier, which can be useful during development (say,
+                  * when you're off-network). *)
              end) : sig
 
     type user

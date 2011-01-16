@@ -27,6 +27,8 @@ structure U = OpenidUser.Make(struct
                                   fun choose _ r = return r
 
                                   val formClass = inputs
+
+                                  val fakeId = None
                               end)
 
 fun wrap title body =

@@ -18,6 +18,7 @@ functor Make(M: sig
                  val association : Openid.association_mode
                  val realm : option string
                  val formClass : css_class
+                 val fakeId : option string
              end) = struct
 
     type user = string
@@ -175,6 +176,35 @@ functor Make(M: sig
                                 redirect (bless after)
                       | None => error <xml>Missing session cookie</xml>
 
+            fun fakeCallback ident after ses =
+                av <- getCookie auth;
+                case av of
+                    Some (SigningUp signup) =>
+                    invalid <- oneRowE1 (SELECT COUNT( * ) = 0
+                                         FROM session
+                                         WHERE session.Id = {[signup.Session]}
+                                           AND session.Key = {[signup.Key]});
+                    if invalid then
+                        error <xml>Invalid or expired session</xml>
+                    else
+                        dml (UPDATE session
+                             SET Identifier = {[Some ident]}
+                             WHERE Id = {[signup.Session]});
+                        signupDetails after
+                  | Some (LoggedIn login) =>
+                    invalid <- oneRowE1 (SELECT COUNT( * ) = 0
+                                         FROM session
+                                         WHERE session.Id = {[login.Session]}
+                                           AND session.Key = {[login.Key]});
+                    if invalid then
+                        error <xml>Invalid or expired session</xml>
+                    else
+                        dml (UPDATE session
+                             SET Identifier = {[Some ident]}
+                             WHERE Id = {[login.Session]});
+                        redirect (bless after)
+                  | None => error <xml>Missing session cookie</xml>
+
             fun newSession () =
                 ses <- nextval sessionIds;
                 now <- now;
@@ -196,11 +226,14 @@ functor Make(M: sig
                                     Expires = None,
                                     Secure = M.secureCookies};
                     ses <- return ses.Session;
-                    msg <- Openid.authenticate (opCallback after ses)
-                           {Association = M.association,
-                            Realm = M.realm,
-                            Identifier = ident};
-                    error <xml>Login with your identity provider failed: {[msg]}</xml>
+                    if M.fakeId = Some ident then
+                        fakeCallback ident after ses
+                    else
+                        msg <- Openid.authenticate (opCallback after ses)
+                                                   {Association = M.association,
+                                                    Realm = M.realm,
+                                                    Identifier = ident};
+                        error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun doSignup after r =
                 ses <- newSession ();
@@ -208,11 +241,14 @@ functor Make(M: sig
                                 Expires = None,
                                 Secure = M.secureCookies};
                 ses <- return ses.Session;
-                msg <- Openid.authenticate (opCallback after ses)
-                                           {Association = M.association,
-                                            Realm = M.realm,
-                                            Identifier = r.Identifier};
-                error <xml>Login with your identity provider failed: {[msg]}</xml>
+                if M.fakeId = Some r.Identifier then
+                    fakeCallback r.Identifier after ses
+                else
+                    msg <- Openid.authenticate (opCallback after ses)
+                                               {Association = M.association,
+                                                Realm = M.realm,
+                                                Identifier = r.Identifier};
+                    error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun signup after =
                 wrap "Account Signup" <xml>
