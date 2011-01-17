@@ -40,5 +40,4 @@ cat <<EOF
 Ur/Web OpenID library configuration:
   lib directory:       LIB            $LIB
   include directory:   INCLUDE        $INCLUDE
-  Extra GCC args:      GCCARGS        $GCCARGS  
 EOF
