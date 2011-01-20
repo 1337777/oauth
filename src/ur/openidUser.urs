@@ -78,9 +78,12 @@ functor Make(M: sig
     val current : transaction (option user)
     (* Figure out which, if any, user is logged in on this connection. *)
 
-    val main : (string -> xbody -> transaction page) -> transaction xbody
+    val main : (string -> xbody -> transaction page) -> transaction {Status : xbody,
+                                                                     Other : xbody}
     (* Pass in your generic page template; get out the HTML snippet for user
      * management, suitable for, e.g., inclusion in your standard page
-     * header. *)
+     * header.  The output gives a "status" chunk, which will either be a login
+     * form or a message about which user is logged in; and an "other" chunk,
+     * which will be a log out or sign up link. *)
 
 end

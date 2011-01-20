@@ -261,11 +261,10 @@ functor Make(M: sig
             cur <- current;
             here <- currentUrl;
             case cur of
-                Some cur => return <xml>Logged in as {[cur]}. <a link={logout ()}>[Log out]</a></xml>
-              | None => return <xml>
-                <form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form>
-                <a link={signup (show here)}>Sign up</a>
-              </xml>
+                Some cur => return {Status = <xml>Logged in as {[cur]}.</xml>,
+                                    Other = <xml><a link={logout ()}>Log out</a></xml>}
+              | None => return {Status = <xml><form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form></xml>,
+                                Other = <xml><a link={signup (show here)}>Sign up</a></xml>}
         end
 
     task periodic 60 = fn () => dml (DELETE FROM session

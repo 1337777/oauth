@@ -36,7 +36,8 @@ fun wrap title body =
     return <xml><head>
       <title>{[title]}</title>
     </head><body>
-      {userStuff}
+      {userStuff.Status}<br/>
+      {userStuff.Other}
 
       <h1>{[title]}</h1>
 
