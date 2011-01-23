@@ -259,13 +259,13 @@ functor Make(M: sig
 
             fun signup after =
                 let
-                    fun fixed cls label url =
+                    fun fixed cls url =
                         let
                             fun doFixedButton () =
                                 doSignup after {Identifier = url}
                         in
                             <xml><form class={provider}>
-                              <submit class={cls} value={label} action={doFixedButton}/>
+                              <submit class={cls} value="" action={doFixedButton}/>
                             </form></xml>
                         end
                 in
@@ -273,10 +273,10 @@ functor Make(M: sig
                       <p>This web site uses the <b><a href="http://openid.net/">OpenID</a></b> standard, which lets you log in using your account from one of several popular web sites, without revealing your password to us.</p>
 
                       <p>You may click one of these buttons to choose to use your account from that site:</p>
-                      {fixed aol "AOL" "https://openid.aol.com/"}
-                      {fixed google "Google" "https://www.google.com/accounts/o8/id"}
-                      {fixed myspace "Myspace" "https://www.myspace.com/openid"}
-                      {fixed yahoo "Yahoo!" "https://me.yahoo.com/"}
+                      {fixed aol "https://openid.aol.com/"}
+                      {fixed google "https://www.google.com/accounts/o8/id"}
+                      {fixed myspace "https://www.myspace.com/openid"}
+                      {fixed yahoo "https://me.yahoo.com/"}
 
                       <p>Visitors familiar with the details of OpenID may also enter their own identifiers:</p>
                       <form>

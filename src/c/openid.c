@@ -77,6 +77,7 @@ typedef struct {
   uw_context ctx;
   uw_OpenidFfi_discovery *d;
   xrds_mode mode;
+  int cur_priority, max_priority;
 } endpoint;
 
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
@@ -105,9 +106,18 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
       }
     }
   }
-  else if (!strcmp(name, "Service"))
+  else if (!strcmp(name, "Service")) {
+    const XML_Char **attp;
+
+    ep->cur_priority = 0;
+    for (attp = atts; *attp; attp += 2)
+      if (!strcmp(attp[0], "priority")) {
+        ep->cur_priority = atoi(attp[1]);
+        break;
+      }
+
     ep->mode = SERVICE;
-  else if (!strcmp(name, "Type")) {
+  } else if (!strcmp(name, "Type")) {
     if (ep->mode == SERVICE)
       ep->mode = TYPE;
   }
@@ -130,9 +140,12 @@ static void XMLCALL cdata(void *userData, const XML_Char *s, int len) {
       ep->mode = MATCHED;
     break;
   case URI:
-    ep->d->endpoint = uw_malloc(ep->ctx, len+1);
-    memcpy(ep->d->endpoint, s, len);
-    ep->d->endpoint[len] = 0;
+    if (ep->cur_priority < ep->max_priority) {
+      ep->d->endpoint = uw_malloc(ep->ctx, len+1);
+      memcpy(ep->d->endpoint, s, len);
+      ep->d->endpoint[len] = 0;
+      ep->max_priority = ep->cur_priority;
+    }
     break;
   default:
     break;
@@ -174,8 +187,9 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   CURL *c = curl(ctx);
   curl_discovery_data cd = {};
   uw_OpenidFfi_discovery *dy = uw_malloc(ctx, sizeof(uw_OpenidFfi_discovery));
-  endpoint ep = {ctx, dy, NONE};
+  endpoint ep = {ctx, dy, NONE, 0, INT_MAX};
   CURLcode code;
+  struct curl_slist *headers = NULL;
 
   dy->endpoint = dy->localId = NULL;
 
@@ -200,8 +214,12 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   curl_easy_setopt(c, CURLOPT_URL, id);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_discovery_data);
   curl_easy_setopt(c, CURLOPT_WRITEDATA, &cd);
+  curl_slist_append(headers, "Accept: application/xrds+xml");
+  uw_push_cleanup(ctx, (void (*)(void *))curl_slist_free_all, headers);
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
 
   code = curl_easy_perform(c);
+  uw_pop_cleanup(ctx);
   uw_pop_cleanup(ctx);
 
   if (code || !dy->endpoint)
@@ -248,6 +266,15 @@ uw_Basis_string uw_OpenidFfi_getOutput(uw_context ctx, uw_OpenidFfi_outputs buf,
       return strchr(s, 0)+1;
 
   return NULL;
+}
+
+uw_unit uw_OpenidFfi_printOutputs(uw_context ctx, uw_OpenidFfi_outputs buf) {
+  char *s = buf->start;
+
+  for (; *s; s = strchr(strchr(s, 0)+1, 0)+1)
+    fprintf(stderr, "%s => %s\n", s, strchr(s, 0)+1);
+
+  return uw_unit_v;
 }
 
 static size_t write_buffer_data(void *buffer, size_t size, size_t nmemb, void *userp) {

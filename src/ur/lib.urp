@@ -5,6 +5,7 @@ effectful OpenidFfi.init
 effectful OpenidFfi.discover
 effectful OpenidFfi.createInputs
 effectful OpenidFfi.addInput
+effectful OpenidFfi.printOutputs
 effectful OpenidFfi.direct
 effectful OpenidFfi.indirect
 effectful OpenidFfi.generate

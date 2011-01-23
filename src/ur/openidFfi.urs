@@ -11,6 +11,7 @@ val addInput : inputs -> string -> string -> transaction {}
 
 type outputs
 val getOutput : outputs -> string -> option string
+val printOutputs : outputs -> transaction {}
 
 val direct : string -> inputs -> transaction outputs
 val indirect : queryString -> transaction outputs

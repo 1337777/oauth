@@ -106,7 +106,13 @@ fun errorResult atype stype os =
            | _ => Some (AssError ("OP error during association: " ^ v)))
       | None => None
 
+fun eatQstring s =
+    case String.split s #"?" of
+        Some (s', _) => s'
+      | _ => s
+
 fun associateNoEncryption url atype =
+    url <- return (eatQstring url);
     is <- createInputs;
     OpenidFfi.addInput is "openid.mode" "associate";
     OpenidFfi.addInput is "openid.assoc_type" (show atype);
@@ -130,6 +136,7 @@ fun associateNoEncryption url atype =
           | _ => return (AssError "Missing expires_in")
 
 fun associateDh url atype stype =
+    url <- return (eatQstring url);
     dh <- OpenidFfi.generate;
 
     is <- createInputs;
@@ -166,6 +173,7 @@ fun associateDh url atype stype =
               | _ => return (AssError "Missing expires_in")
 
 fun oldAssociation url =
+    url <- return (eatQstring url);
     secret <- oneOrNoRows1 (SELECT associations.Handle, associations.Typ, associations.Key
                             FROM associations
                             WHERE associations.Endpoint = {[url]});
@@ -381,22 +389,28 @@ fun authenticate after r =
         case dy of
             None => return "Discovery failed"
           | Some dy =>
-            case r.Association of
-                Stateless =>
-                redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
-                                 ^ "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
-                                 ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                 ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
-              | Stateful ar =>
-                assoc <- association ar.AssociationType ar.AssociationSessionType dy;
-                case assoc of
-                    AssError msg => return ("Association failure: " ^ msg)
-                  | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
-                  | Association assoc =>
-                    redirect (bless (dy ^ "?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
+            let
+                val begin = case String.index dy #"?" of
+                                None => "?"
+                              | Some _ => "&"
+            in
+                case r.Association of
+                    Stateless =>
+                    redirect (bless (dy ^ begin ^ "openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
                                      ^ "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
                                      ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
-                                     ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
+                                     ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
+                  | Stateful ar =>
+                    assoc <- association ar.AssociationType ar.AssociationSessionType dy;
+                    case assoc of
+                        AssError msg => return ("Association failure: " ^ msg)
+                      | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
+                      | Association assoc =>
+                        redirect (bless (dy ^ begin ^ "openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
+                                         ^ "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
+                                         ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                         ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
+            end
     end
 
 task periodic 60 = fn () =>
