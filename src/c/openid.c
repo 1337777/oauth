@@ -10,13 +10,17 @@
 #include <curl/curl.h>
 #include <expat.h>
 
+#include <pthread.h>
+
 #include <openid.h>
 
 #define BUF_MAX 10240
 #define BUF_INIT 1024
 
-#define PRIME_LEN 64
-#define GENERATOR DH_GENERATOR_5
+#define DEFAULT_PRIME "DCF93A0B883972EC0E19989AC5A2CE310E1D37717E8D9571BB7623731866E61EF75A2E27898B057F9891C2E27A639C3F29B60814581CD3B2CA3986D2683705577D45C2E7E52DC81C7A171876E5CEA74B1448BFDFAF18828EFD2519F14E45E3826634AF1949E5B535CC829A483B8A76223E5D490A257F05BDFF16F2FB22C583AB"
+#define DEFAULT_GENERATOR "2"
+
+static BIGNUM *default_prime, *default_generator;
 
 uw_Basis_string uw_OpenidFfi_endpoint(uw_context ctx, uw_OpenidFfi_discovery d) {
   return d.endpoint;
@@ -26,8 +30,31 @@ uw_Basis_string uw_OpenidFfi_localId(uw_context ctx, uw_OpenidFfi_discovery d) {
   return d.localId;
 }
 
+static pthread_mutex_t *locks;
+
+static void locking_function(int mode, int n, const char *file, int line) {
+  if (mode & CRYPTO_LOCK)
+    pthread_mutex_lock(&locks[n]);
+  else
+    pthread_mutex_unlock(&locks[n]);
+}
+
+static unsigned long id_function() {
+  return pthread_self();
+}
+
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
+  int nl = CRYPTO_num_locks(), i;
+  locks = malloc(sizeof(pthread_mutex_t) * nl);
+  for (i = 0; i < nl; ++i)
+    pthread_mutex_init(&locks[i], NULL);
+
+  CRYPTO_set_locking_callback(locking_function);
+  CRYPTO_set_id_callback(id_function);
   curl_global_init(CURL_GLOBAL_ALL);
+
+  BN_hex2bn(&default_prime, DEFAULT_PRIME);
+  BN_dec2bn(&default_generator, DEFAULT_GENERATOR);
 
   return uw_unit_v;
 }
@@ -44,13 +71,19 @@ static CURL *curl(uw_context ctx) {
   return r;
 }
 
+typedef enum { NONE, SERVICE, TYPE, MATCHED, URI } xrds_mode;
+
 typedef struct {
   uw_context ctx;
   uw_OpenidFfi_discovery *d;
+  xrds_mode mode;
 } endpoint;
 
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
   endpoint *ep = userData;
+
+  if (!strncmp(name, "xrd:", 4))
+    name += 4;
 
   if (!strcmp(name, "link")) {
     const XML_Char **attp;
@@ -72,6 +105,54 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
       }
     }
   }
+  else if (!strcmp(name, "Service"))
+    ep->mode = SERVICE;
+  else if (!strcmp(name, "Type")) {
+    if (ep->mode == SERVICE)
+      ep->mode = TYPE;
+  }
+  else if (!strcmp(name, "URI")) {
+    if (ep->mode == MATCHED)
+      ep->mode = URI;
+  }
+}
+
+static char server[] = "http://specs.openid.net/auth/2.0/server";
+static char signon[] = "http://specs.openid.net/auth/2.0/signon";
+
+static void XMLCALL cdata(void *userData, const XML_Char *s, int len) {
+  endpoint *ep = userData;
+
+  switch (ep->mode) {
+  case TYPE:
+    if ((len == sizeof(server)-1 && !memcmp(server, s, sizeof(server)-1))
+        || (len == sizeof(signon)-1 && !memcmp(signon, s, sizeof(signon)-1)))
+      ep->mode = MATCHED;
+    break;
+  case URI:
+    ep->d->endpoint = uw_malloc(ep->ctx, len+1);
+    memcpy(ep->d->endpoint, s, len);
+    ep->d->endpoint[len] = 0;
+    break;
+  default:
+    break;
+  }
+}
+
+static void XMLCALL endElement(void *userData, const XML_Char *name) {
+  endpoint *ep = userData;
+
+  if (!strncmp(name, "xrd:", 4))
+    name += 4;
+
+  if (!strcmp(name, "Service"))
+    ep->mode = NONE;
+  else if (!strcmp(name, "Type")) {
+    if (ep->mode != MATCHED)
+      ep->mode = SERVICE;
+  }
+  else if (!strcmp(name, "URI"))
+    ep->mode = MATCHED;
 }
 
 typedef struct {
@@ -93,7 +174,7 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   CURL *c = curl(ctx);
   curl_discovery_data cd = {};
   uw_OpenidFfi_discovery *dy = uw_malloc(ctx, sizeof(uw_OpenidFfi_discovery));
-  endpoint ep = {ctx, dy};
+  endpoint ep = {ctx, dy, NONE};
   CURLcode code;
 
   dy->endpoint = dy->localId = NULL;
@@ -112,8 +193,10 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   cd.parser = XML_ParserCreate(NULL);
   XML_SetUserData(cd.parser, &ep);
   uw_push_cleanup(ctx, (void (*)(void *))XML_ParserFree, cd.parser);
-  XML_SetStartElementHandler(cd.parser, startElement);
+  XML_SetElementHandler(cd.parser, startElement, endElement);
+  XML_SetCharacterDataHandler(cd.parser, cdata);
 
+  curl_easy_reset(c);
   curl_easy_setopt(c, CURLOPT_URL, id);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_discovery_data);
   curl_easy_setopt(c, CURLOPT_WRITEDATA, &cd);
@@ -143,20 +226,6 @@ static void postify(uw_OpenidFfi_inputs buf, uw_Basis_string s) {
       sprintf(hex, "%%%02X", (unsigned char)*s);
       uw_buffer_append(buf, hex, 3);
     }
-
-    /*switch (*s) {
-    case '=':
-      uw_buffer_append(buf, "%3D", 3);
-      break;
-    case '&':
-      uw_buffer_append(buf, "%26", 3);
-      break;
-    case '%':
-      uw_buffer_append(buf, "%25", 3);
-      break;
-    default:
-      uw_buffer_append(buf, s, 1);
-    }*/
   }
 }
 
@@ -200,13 +269,13 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
 
   uw_buffer_append(inps, "", 1);
 
+  curl_easy_reset(c);
   curl_easy_setopt(c, CURLOPT_URL, url);
   curl_easy_setopt(c, CURLOPT_POSTFIELDS, inps->start);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_buffer_data);
   curl_easy_setopt(c, CURLOPT_WRITEDATA, buf);
 
   code = curl_easy_perform(c);
-
   uw_buffer_append(buf, "", 1);
 
   if (code) {
@@ -388,15 +457,17 @@ uw_Basis_string uw_OpenidFfi_public(uw_context ctx, uw_OpenidFfi_dh dh) {
 
 static void free_DH(void *data, int will_retry) {
   DH *dh = data;
+  dh->p = NULL;
+  dh->g = NULL;
   DH_free(dh);
 }
 
 uw_OpenidFfi_dh uw_OpenidFfi_generate(uw_context ctx) {
   DH *dh = DH_new();
 
+  dh->p = default_prime;
+  dh->g = default_generator;
   uw_register_transactional(ctx, dh, NULL, NULL, free_DH);
-
-  DH_generate_parameters_ex(dh, PRIME_LEN, GENERATOR, NULL);
 
   if (DH_generate_key(dh) != 1)
     uw_error(ctx, FATAL, "Diffie-Hellman key generation failed");

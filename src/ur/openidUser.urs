@@ -87,3 +87,13 @@ functor Make(M: sig
      * which will be a log out or sign up link. *)
 
 end
+
+(* Functor outputs will contain buttons specialized to particular well-known
+ * OpenID providers.  Use these CSS classes to style those buttons. *)
+style aol
+style google
+style myspace
+style yahoo
+
+(* This style is used by forms containing the above buttons. *)
+style provider

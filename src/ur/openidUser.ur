@@ -1,3 +1,10 @@
+style provider
+
+style aol
+style google
+style myspace
+style yahoo
+
 functor Make(M: sig
                  con cols :: {Type}
                  constraint [Id] ~ cols
@@ -251,12 +258,33 @@ functor Make(M: sig
                     error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun signup after =
-                wrap "Account Signup" <xml>
-                  <form>
-                    OpenID Identifier: <textbox{#Identifier}/><br/>
-                    <submit value="Sign Up" action={doSignup after}/>
-                  </form>
-                </xml>
+                let
+                    fun fixed cls label url =
+                        let
+                            fun doFixedButton () =
+                                doSignup after {Identifier = url}
+                        in
+                            <xml><form class={provider}>
+                              <submit class={cls} value={label} action={doFixedButton}/>
+                            </form></xml>
+                        end
+                in
+                    wrap "Account Signup" <xml>
+                      <p>This web site uses the <b><a href="http://openid.net/">OpenID</a></b> standard, which lets you log in using your account from one of several popular web sites, without revealing your password to us.</p>
+
+                      <p>You may click one of these buttons to choose to use your account from that site:</p>
+                      {fixed aol "AOL" "https://openid.aol.com/"}
+                      {fixed google "Google" "https://www.google.com/accounts/o8/id"}
+                      {fixed myspace "Myspace" "https://www.myspace.com/openid"}
+                      {fixed yahoo "Yahoo!" "https://me.yahoo.com/"}
+
+                      <p>Visitors familiar with the details of OpenID may also enter their own identifiers:</p>
+                      <form>
+                        OpenID Identifier: <textbox{#Identifier}/><br/>
+                        <submit value="Sign Up" action={doSignup after}/>
+                      </form>
+                    </xml>
+                end
         in
             cur <- current;
             here <- currentUrl;
