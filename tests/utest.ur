@@ -24,7 +24,7 @@ structure U = OpenidUser.Make(struct
                                       n <- signal r.Nam;
                                       return {Nam = n}
 
-                                  fun choose _ r = return r
+                                  fun choose _ r = return (OpenidUser.Success r)
 
                                   val formClass = inputs
 
