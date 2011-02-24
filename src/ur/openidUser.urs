@@ -7,6 +7,8 @@
  * Module author: Adam Chlipala
  *)
 
+datatype choose_result a = Success of a | Failure of string
+
 (* Instantiate this functor to create your customized authentication scheme. *)
 functor Make(M: sig
                  con cols :: {Type}
@@ -35,7 +37,7 @@ functor Make(M: sig
                  (* Functionalize current state. *)
 
                  val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]]
-                              -> creationData -> transaction $cols
+                              -> creationData -> transaction (choose_result $cols)
                  (* Use functionalized state to choose initial column values,
                   * given a handle to the users table. *)
 
@@ -67,7 +69,9 @@ functor Make(M: sig
              end) : sig
 
     type user
+    val eq_user : eq user
     val show_user : show user
+    val read_user : read user
     val inj_user : sql_injectable_prim user
     (* The abstract type of user IDs.  It's really [string], but this is only
      * exposed via some standard type class instances. *)

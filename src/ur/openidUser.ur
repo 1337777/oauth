@@ -5,6 +5,8 @@ style google
 style myspace
 style yahoo
 
+datatype choose_result a = Success of a | Failure of string
+
 functor Make(M: sig
                  con cols :: {Type}
                  constraint [Id] ~ cols
@@ -17,7 +19,7 @@ functor Make(M: sig
                  val render : creationState -> xtable
                  val ready : creationState -> signal bool
                  val tabulate : creationState -> signal creationData
-                 val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]] -> creationData -> transaction $cols
+                 val choose : sql_table ([Id = string] ++ cols) [Pkey = [Id]] -> creationData -> transaction (choose_result $cols)
 
                  val sessionLifetime : int
                  val afterLogout : url
@@ -29,6 +31,8 @@ functor Make(M: sig
              end) = struct
 
     type user = string
+    val eq_user = _
+    val read_user = _
     val show_user = _
     val inj_user = _
 
@@ -112,15 +116,18 @@ functor Make(M: sig
                                         None => return (Some "Invalid session data")
                                       | Some None => return (Some "Session has no associated identifier")
                                       | Some (Some ident) =>
-                                        setCookie auth {Value = LoggedIn ({User = uid} ++ ses),
-                                                        Expires = None,
-                                                        Secure = M.secureCookies};
-
                                         cols <- M.choose user data;
-                                        dml (insert user ({Id = (SQL {[uid]})} ++ @Sql.sqexps M.folder M.inj cols));
-                                        dml (INSERT INTO identity (User, Identifier)
-                                             VALUES ({[uid]}, {[ident]}));
-                                        redirect (bless after)
+                                        case cols of
+                                            Failure s => return (Some s)
+                                          | Success cols =>
+                                            setCookie auth {Value = LoggedIn ({User = uid} ++ ses),
+                                                            Expires = None,
+                                                            Secure = M.secureCookies};
+
+                                            dml (insert user ({Id = (SQL {[uid]})} ++ @Sql.sqexps M.folder M.inj cols));
+                                            dml (INSERT INTO identity (User, Identifier)
+                                                 VALUES ({[uid]}, {[ident]}));
+                                            redirect (bless after)
                 in
                     uid <- source "";
                     cs <- M.creationState;
