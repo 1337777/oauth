@@ -127,7 +127,7 @@ functor Make(M: sig
                                             dml (insert user ({Id = (SQL {[uid]})} ++ @Sql.sqexps M.folder M.inj cols));
                                             dml (INSERT INTO identity (User, Identifier)
                                                  VALUES ({[uid]}, {[ident]}));
-                                            redirect (bless after)
+                                            return None
                 in
                     uid <- source "";
                     cs <- M.creationState;
