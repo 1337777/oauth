@@ -1,0 +1,26 @@
+syntax: glob
+
+*~
+
+*.o
+.deps
+.libs
+*.lo
+*.la
+*.exe
+*.sql
+
+*.cache
+*.log
+*.status
+
+aclocal.m4
+
+syntax: regexp
+
+^Makefile$
+^src/c/Makefile$
+^src/ur/config.urp$
+^libtool$
+^config.h$
+^stamp-h1$
