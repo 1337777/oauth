@@ -66,6 +66,10 @@ functor Make(M: sig
                  (* If set, this string is always accepted as a verified
                   * identifier, which can be useful during development (say,
                   * when you're off-network). *)
+                  
+                 val ctlDisplay : {User : {Status : xbody, Other : xbody},
+                                   Guest : {Status : xbody, Other : xbody}}
+                 (* These help formatting the user status controls *)
              end) : sig
 
     type user
