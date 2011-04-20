@@ -9,6 +9,26 @@
 
 datatype choose_result a = Success of a | Failure of string
 
+(* Formatting options for the gui elements and controls. *)
+signature CTLDISPLAY = sig
+
+    val formatUser : xbody -> xbody
+    (* Format the display of the logged on user *)
+                              
+    val formatLogout : url -> xbody
+    (* Format the logout link *)
+
+    val formatSignup : url -> xbody
+    (* Format the signup link *)
+
+    val formatLogon : ({User : string} -> transaction page) -> xbody
+   (* Format the login form *)
+end
+
+(* Some reasonable default gui control formats for programmers in a hurry. *)
+structure DefaultDisplay : CTLDISPLAY
+
+
 (* Instantiate this functor to create your customized authentication scheme. *)
 functor Make(M: sig
                  con cols :: {Type}
@@ -66,10 +86,9 @@ functor Make(M: sig
                  (* If set, this string is always accepted as a verified
                   * identifier, which can be useful during development (say,
                   * when you're off-network). *)
-                  
-                 val ctlDisplay : {User : {Status : xbody, Other : xbody},
-                                   Guest : {Status : xbody, Other : xbody}}
-                 (* These help formatting the user status controls *)
+
+                 structure CtlDisplay : CTLDISPLAY
+                 (* Tells how to format the GUI elements. *)
              end) : sig
 
     type user
@@ -86,14 +105,16 @@ functor Make(M: sig
     val current : transaction (option user)
     (* Figure out which, if any, user is logged in on this connection. *)
 
+
     val main : (string -> xbody -> transaction page) -> transaction {Status : xbody,
-                                                                     Other : xbody}
+                                                                     Other : {Url : url, Xml : xbody}}
+
     (* Pass in your generic page template; get out the HTML snippet for user
      * management, suitable for, e.g., inclusion in your standard page
      * header.  The output gives a "status" chunk, which will either be a login
      * form or a message about which user is logged in; and an "other" chunk,
      * which will be a log out or sign up link. *)
-
+                             
 end
 
 (* Functor outputs will contain buttons specialized to particular well-known

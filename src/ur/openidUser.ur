@@ -7,6 +7,30 @@ style yahoo
 
 datatype choose_result a = Success of a | Failure of string
 
+signature CTLDISPLAY = sig
+    val formatUser : xbody -> xbody
+    val formatLogout : url -> xbody
+    val formatSignup : url -> xbody
+    val formatLogon : ({User : string} -> transaction page) -> xbody
+end
+
+structure DefaultDisplay : CTLDISPLAY = struct
+    fun formatUser user =
+        <xml>You are logged in as {user}</xml>
+
+    fun formatLogout url =
+        <xml><a href={url}>Log Out</a></xml>
+
+    fun formatSignup url =
+        <xml><a href={url}>Sign Up</a></xml>
+
+    fun formatLogon handler =
+        <xml>
+          <form><textbox{#User}/><submit value="Log In" action={handler}/></form>
+        </xml>
+end
+
+
 functor Make(M: sig
                  con cols :: {Type}
                  constraint [Id] ~ cols
@@ -29,8 +53,7 @@ functor Make(M: sig
                  val formClass : css_class
                  val fakeId : option string
 
-                 val ctlDisplay : {User : {Status : xbody, Other : xbody},
-                                   Guest : {Status : xbody, Other : xbody}}
+                 structure CtlDisplay : CTLDISPLAY
              end) = struct
 
     type user = string
@@ -298,11 +321,14 @@ functor Make(M: sig
         in
             cur <- current;
             here <- currentUrl;
+
             case cur of
-                Some cur => return {Status = <xml>{M.ctlDisplay.User.Status}{[cur]}</xml>,
-                                    Other = <xml><a link={logout ()}>{M.ctlDisplay.User.Other}</a></xml>}
-              | None => return {Status = <xml>{M.ctlDisplay.Guest.Status}<form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form></xml>,
-                                Other = <xml><a link={signup (show here)}>{M.ctlDisplay.Guest.Other}</a></xml>}
+                Some cur => return {Status = (M.CtlDisplay.formatUser <xml>{[cur]}</xml>),
+                                    Other = {Url = (url (logout ())), 
+                                             Xml = (M.CtlDisplay.formatLogout (url (logout ())))}}
+              | None => return {Status = (M.CtlDisplay.formatLogon (logon (show here))),
+                                Other = {Url = (url (signup (show here))),
+                                         Xml = (M.CtlDisplay.formatSignup (url (signup (show here))))}}
         end
 
     task periodic 60 = fn () => dml (DELETE FROM session
