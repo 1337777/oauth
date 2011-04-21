@@ -29,6 +29,9 @@ structure U = OpenidUser.Make(struct
                                   val formClass = inputs
 
                                   val fakeId = None
+
+                                  val ctlDisplay = {User = {Status = <xml>Status</xml>, Logout = <xml>Log Out</xml>},
+                                                    Guest = {Status = <xml>Status</xml>, Signup = <xml>Sign Up</xml>}}
                               end)
 
 fun wrap title body =

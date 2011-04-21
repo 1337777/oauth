@@ -67,9 +67,14 @@ functor Make(M: sig
                   * identifier, which can be useful during development (say,
                   * when you're off-network). *)
                   
-                 val ctlDisplay : {User : {Status : xbody, Other : xbody},
-                                   Guest : {Status : xbody, Other : xbody}}
-                 (* These help formatting the user status controls *)
+                 val ctlDisplay : {User : {Status : xbody,
+                                           (* Anything extra to display to represent the logged-in user's status *)
+                                           Logout : xbody
+                                           (* Text for link to log out *)},
+                                   Guest : {Status : xbody,
+                                            (* What to show in the place where a logged-in user's status would be *)
+                                            Signup : xbody
+                                            (* Text for link to sign up *)}}
              end) : sig
 
     type user

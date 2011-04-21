@@ -29,8 +29,8 @@ functor Make(M: sig
                  val formClass : css_class
                  val fakeId : option string
 
-                 val ctlDisplay : {User : {Status : xbody, Other : xbody},
-                                   Guest : {Status : xbody, Other : xbody}}
+                 val ctlDisplay : {User : {Status : xbody, Logout : xbody},
+                                   Guest : {Status : xbody, Signup : xbody}}
              end) = struct
 
     type user = string
@@ -300,9 +300,9 @@ functor Make(M: sig
             here <- currentUrl;
             case cur of
                 Some cur => return {Status = <xml>{M.ctlDisplay.User.Status}{[cur]}</xml>,
-                                    Other = <xml><a link={logout ()}>{M.ctlDisplay.User.Other}</a></xml>}
+                                    Other = <xml><a link={logout ()}>{M.ctlDisplay.User.Logout}</a></xml>}
               | None => return {Status = <xml>{M.ctlDisplay.Guest.Status}<form><textbox{#User}/> <submit value="Log In" action={logon (show here)}/></form></xml>,
-                                Other = <xml><a link={signup (show here)}>{M.ctlDisplay.Guest.Other}</a></xml>}
+                                Other = <xml><a link={signup (show here)}>{M.ctlDisplay.Guest.Signup}</a></xml>}
         end
 
     task periodic 60 = fn () => dml (DELETE FROM session
