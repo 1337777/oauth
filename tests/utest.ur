@@ -29,6 +29,8 @@ structure U = OpenidUser.Make(struct
                                   val formClass = inputs
 
                                   val fakeId = None
+
+                                  structure CtlDisplay = OpenidUser.DefaultDisplay
                               end)
 
 fun wrap title body =
@@ -37,7 +39,7 @@ fun wrap title body =
       <title>{[title]}</title>
     </head><body>
       {userStuff.Status}<br/>
-      {userStuff.Other}
+      {userStuff.Other.Xml}
 
       <h1>{[title]}</h1>
 
