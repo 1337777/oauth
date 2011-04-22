@@ -113,7 +113,8 @@ functor Make(M: sig
      * management, suitable for, e.g., inclusion in your standard page
      * header.  The output gives a "status" chunk, which will either be a login
      * form or a message about which user is logged in; and an "other" chunk,
-     * which will be a log out or sign up link. *)
+     * which will be a log out or sign up link. In the case "other", the link
+     * itself is also provided for cases when one format is not enough. *)
                              
 end
 
