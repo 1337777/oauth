@@ -16,7 +16,7 @@ end
 
 structure DefaultDisplay : CTLDISPLAY = struct
     fun formatUser user =
-        <xml>You are logged in as {user}</xml>
+        <xml>You are logged in as {user}.</xml>
 
     fun formatLogout url =
         <xml><a href={url}>Log Out</a></xml>
