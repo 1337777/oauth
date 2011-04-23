@@ -22,7 +22,7 @@ signature CTLDISPLAY = sig
     (* Format the signup link *)
 
     val formatLogon : ({User : string} -> transaction page) -> xbody
-   (* Format the login form *)
+    (* Format the login form *)
 end
 
 (* Some reasonable default gui control formats for programmers in a hurry. *)
