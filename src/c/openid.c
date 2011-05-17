@@ -39,10 +39,6 @@ static void locking_function(int mode, int n, const char *file, int line) {
     pthread_mutex_unlock(&locks[n]);
 }
 
-static unsigned long id_function() {
-  return pthread_self();
-}
-
 uw_unit uw_OpenidFfi_init(uw_context ctx) {
   int nl = CRYPTO_num_locks(), i;
   locks = malloc(sizeof(pthread_mutex_t) * nl);
@@ -50,7 +46,6 @@ uw_unit uw_OpenidFfi_init(uw_context ctx) {
     pthread_mutex_init(&locks[i], NULL);
 
   CRYPTO_set_locking_callback(locking_function);
-  CRYPTO_set_id_callback(id_function);
   curl_global_init(CURL_GLOBAL_ALL);
 
   BN_hex2bn(&default_prime, DEFAULT_PRIME);
