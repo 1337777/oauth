@@ -9,7 +9,7 @@ fun auth r =
     msg <- Openid.authenticate afterward
                                {Association = Openid.Stateful {AssociationType = Openid.HMAC_SHA256,
                                                                AssociationSessionType = Openid.NoEncryption},
-                                Identifier = r.Id,
+                                Identifier = Openid.KnownIdentifier r.Id,
                                 Realm = Some "http://localhost:8080/"};
     error <xml>{[msg]}</xml>
 
