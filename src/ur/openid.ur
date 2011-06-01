@@ -41,6 +41,10 @@ datatype association_mode =
        | Stateful of {AssociationType : association_type,
                       AssociationSessionType : association_session_type}
 
+datatype authentication_mode =
+         ChooseIdentifier of string
+       | KnownIdentifier of string
+
 table associations : { Endpoint : string, Handle : string, Typ : serialized association_type, Key : string, Expires : time }
   PRIMARY KEY Endpoint
 
@@ -384,8 +388,18 @@ fun authenticate after r =
         val realmString = case r.Realm of
                               None => ""
                             | Some realm => "&openid.realm=" ^ realm
+
+        val (ident, claimed) =
+            case r.Identifier of
+                ChooseIdentifier s => (eatFragment s, "http://specs.openid.net/auth/2.0/identifier_select")
+              | KnownIdentifier s =>
+                let
+                    val s = eatFragment s
+                in
+                    (s, s)
+                end
     in
-        dy <- discover r.Identifier;
+        dy <- discover ident;
         case dy of
             None => return "Discovery failed"
           | Some dy =>
@@ -397,8 +411,8 @@ fun authenticate after r =
                 case r.Association of
                     Stateless =>
                     redirect (bless (dy ^ begin ^ "openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
-                                     ^ "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
-                                     ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                     ^ "&openid.claimed_id=" ^ claimed
+                                     ^ "&openid.identity=" ^ claimed ^ "&openid.assoc_handle="
                                      ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
                   | Stateful ar =>
                     assoc <- association ar.AssociationType ar.AssociationSessionType dy;
@@ -407,8 +421,8 @@ fun authenticate after r =
                       | AssAlternate _ => return "Association failure: server didn't accept its own alternate association modes"
                       | Association assoc =>
                         redirect (bless (dy ^ begin ^ "openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup"
-                                         ^ "&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select"
-                                         ^ "&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle="
+                                         ^ "&openid.claimed_id=" ^ claimed
+                                         ^ "&openid.identity=" ^ claimed ^ "&openid.assoc_handle="
                                          ^ assoc.Handle ^ "&openid.return_to=" ^ show (effectfulUrl returnTo) ^ realmString))
             end
     end

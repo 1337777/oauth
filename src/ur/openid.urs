@@ -72,6 +72,16 @@ datatype association_mode =
        | Stateful of {AssociationType : association_type,
                       AssociationSessionType : association_session_type}
 
+(* It is possible to request authentication in two different modes: *)
+
+datatype authentication_mode =
+         ChooseIdentifier of string
+         (* The provider prompts the user to select his identity.
+          * The string argument should be a generic endpoint, e.g.,
+          * "https://www.google.com/accounts/o8/id". *)
+       | KnownIdentifier of string
+         (* Require authentication as this precise identifier. *)
+
 (* An authentication attempt terminates in one of four ways.
  * First, the user might get bored and surf away, never finishing the process.
  * If so, your application will never be told explicitly.
@@ -110,7 +120,7 @@ val authenticate : (authentication -> transaction page)
                         * crypto that you ask for, the library automatically
                         * switches to a mode that the server advertises as
                         * supported. *)
-                       Identifier : string,
+                       Identifier : authentication_mode,
                        (* The URL that the user claims identifies him.
                         * It may also point to a generic authentication service
                         * that will take care of deciding the proper

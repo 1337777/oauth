@@ -272,7 +272,7 @@ functor Make(M: sig
                         msg <- Openid.authenticate (opCallback after ses)
                                                    {Association = M.association,
                                                     Realm = M.realm,
-                                                    Identifier = ident};
+                                                    Identifier = Openid.KnownIdentifier ident};
                         error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun doSignup after r =
@@ -287,7 +287,7 @@ functor Make(M: sig
                     msg <- Openid.authenticate (opCallback after ses)
                                                {Association = M.association,
                                                 Realm = M.realm,
-                                                Identifier = r.Identifier};
+                                                Identifier = Openid.ChooseIdentifier r.Identifier};
                     error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun signup after =
