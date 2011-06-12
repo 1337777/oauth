@@ -206,6 +206,7 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   XML_SetCharacterDataHandler(cd.parser, cdata);
 
   curl_easy_reset(c);
+  curl_easy_setopt(c, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
   curl_easy_setopt(c, CURLOPT_URL, id);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_discovery_data);
   curl_easy_setopt(c, CURLOPT_WRITEDATA, &cd);
@@ -216,6 +217,13 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   code = curl_easy_perform(c);
   uw_pop_cleanup(ctx);
   uw_pop_cleanup(ctx);
+
+  if (code) {
+    uw_Basis_debug(ctx, "CURL error:");
+    uw_Basis_debug(ctx, (char*)curl_easy_strerror(code));
+  }
+  else if (!dy->endpoint)
+    uw_Basis_debug(ctx, "Couldn't parse endpoint from page");
 
   if (code || !dy->endpoint)
     return NULL;
@@ -292,6 +300,7 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
   uw_buffer_append(inps, "", 1);
 
   curl_easy_reset(c);
+  curl_easy_setopt(c, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
   curl_easy_setopt(c, CURLOPT_URL, url);
   curl_easy_setopt(c, CURLOPT_POSTFIELDS, inps->start);
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_buffer_data);
