@@ -421,7 +421,7 @@ static int unbase64(unsigned char *input, int length, unsigned char *buffer, int
   BIO_push(b64, bmem);
   n = BIO_read(b64, buffer, bufferLength);
 
-  BIO_free_all(bmem);
+  BIO_free_all(b64);
 
   return n;
 }
