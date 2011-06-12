@@ -72,7 +72,7 @@ typedef struct {
   uw_context ctx;
   uw_OpenidFfi_discovery *d;
   xrds_mode mode;
-  int cur_priority, max_priority;
+  int cur_priority, max_priority, found_old_version;
 } endpoint;
 
 static void XMLCALL startElement(void *userData, const XML_Char *name, const XML_Char **atts) {
@@ -89,6 +89,9 @@ static void XMLCALL startElement(void *userData, const XML_Char *name, const XML
       if (!strcmp(attp[0], "rel") && !strcmp(attp[1], "openid2.provider")) {
         found = 1;
         break;
+      } else if (!strcmp(attp[0], "rel") && !strcmp(attp[1], "openid.server")) {
+        ep->found_old_version = 1;
+        return;
       }
     }
 
@@ -182,7 +185,7 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
   CURL *c = curl(ctx);
   curl_discovery_data cd = {};
   uw_OpenidFfi_discovery *dy = uw_malloc(ctx, sizeof(uw_OpenidFfi_discovery));
-  endpoint ep = {ctx, dy, NONE, 0, INT_MAX};
+  endpoint ep = {ctx, dy, NONE, 0, INT_MAX, 0};
   CURLcode code;
   struct curl_slist *headers = NULL;
 
@@ -222,8 +225,12 @@ uw_OpenidFfi_discovery *uw_OpenidFfi_discover(uw_context ctx, uw_Basis_string id
     uw_Basis_debug(ctx, "CURL error:");
     uw_Basis_debug(ctx, (char*)curl_easy_strerror(code));
   }
-  else if (!dy->endpoint)
-    uw_Basis_debug(ctx, "Couldn't parse endpoint from page");
+  else if (!dy->endpoint) {
+    if (ep.found_old_version)
+      uw_Basis_debug(ctx, "Provider doesn't support OpenID version 2.0 but does support an older version");
+    else
+      uw_Basis_debug(ctx, "Couldn't parse endpoint from page");
+  }
 
   if (code || !dy->endpoint)
     return NULL;
