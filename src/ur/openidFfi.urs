@@ -30,5 +30,6 @@ val public : dh -> string
 val generate : transaction dh
 val compute : dh -> string -> transaction string
 val xor : string -> string -> string
+val secCmp : string -> string -> bool
 
 val remode : outputs -> string -> inputs
