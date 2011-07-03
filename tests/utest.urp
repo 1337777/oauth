@@ -1,0 +1,11 @@
+path META=../../meta
+library ../src/ur
+rewrite all Utest/*
+database dbname=openid
+sql utest.sql
+allow url http://*
+allow url https://*
+allow url /*
+prefix http://localhost:8080/
+
+utest

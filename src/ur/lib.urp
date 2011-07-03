@@ -1,0 +1,19 @@
+library config
+ffi openidFfi
+link -lurweb_openid -lexpat
+effectful OpenidFfi.init
+effectful OpenidFfi.discover
+effectful OpenidFfi.createInputs
+effectful OpenidFfi.addInput
+effectful OpenidFfi.printOutputs
+effectful OpenidFfi.direct
+effectful OpenidFfi.indirect
+effectful OpenidFfi.generate
+effectful OpenidFfi.compute
+library $META
+
+$/string
+$/option
+$/list
+openid
+openidUser
