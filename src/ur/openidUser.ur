@@ -84,7 +84,11 @@ functor Make(M: sig
         if b then
             return M.afterLogout
         else
-            currentUrl
+            b <- currentUrlHasQueryString;
+            if b then
+                return M.afterLogout
+            else
+                currentUrl
 
     val current =
         login <- getCookie auth;
