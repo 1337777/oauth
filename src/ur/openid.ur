@@ -323,7 +323,7 @@ fun verifySig os atype key =
                                         HMAC_SHA256 => OpenidFfi.hmac_sha256 key nvps
                                       | HMAC_SHA1 => OpenidFfi.hmac_sha1 key nvps
                     in
-                        if secCmp sign' sign then
+                        if OpenidFfi.secCmp sign' sign then
                             return None
                         else
                             return (Some "Signatures don't match")
