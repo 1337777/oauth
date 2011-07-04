@@ -15,8 +15,8 @@ signature CTLDISPLAY = sig
     val formatUser : xbody -> xbody
     (* Format the display of the logged on user *)
                               
-    val formatLogout : url -> xbody
-    (* Format the logout link *)
+    val formatLogout : ($([]) -> transaction page) -> xbody
+    (* Format the logout button *)
 
     val formatSignup : url -> xbody
     (* Format the signup link *)
@@ -107,14 +107,15 @@ functor Make(M: sig
 
 
     val main : (string -> xbody -> transaction page) -> transaction {Status : xbody,
-                                                                     Other : {Url : url, Xml : xbody}}
+                                                                     Other : {Url : option url, Xml : xbody}}
 
     (* Pass in your generic page template; get out the HTML snippet for user
      * management, suitable for, e.g., inclusion in your standard page
      * header.  The output gives a "status" chunk, which will either be a login
      * form or a message about which user is logged in; and an "other" chunk,
-     * which will be a log out or sign up link. In the case "other", the link
-     * itself is also provided for cases when one format is not enough. *)
+     * which will be a log out button or sign up link. In the case of "other",
+     * the link itself (if available) is also provided for cases when one
+     * format is not enough. *)
                              
 end
 

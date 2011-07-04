@@ -9,7 +9,7 @@ datatype choose_result a = Success of a | Failure of string
 
 signature CTLDISPLAY = sig
     val formatUser : xbody -> xbody
-    val formatLogout : url -> xbody
+    val formatLogout : ($([]) -> transaction page) -> xbody
     val formatSignup : url -> xbody
     val formatLogon : ({User : string} -> transaction page) -> xbody
 end
@@ -18,8 +18,10 @@ structure DefaultDisplay : CTLDISPLAY = struct
     fun formatUser user =
         <xml>You are logged in as {user}.</xml>
 
-    fun formatLogout url =
-        <xml><a href={url}>Log Out</a></xml>
+    fun formatLogout handler =
+        <xml>
+	  <form><submit value="Logout" action={handler}/></form>
+	</xml>
 
     fun formatSignup url =
         <xml><a href={url}>Sign Up</a></xml>
@@ -118,7 +120,14 @@ functor Make(M: sig
     fun main wrap =
         let
             fun logout () =
+		login <- getCookie auth;
                 clearCookie auth;
+		(case login of
+		    Some (LoggedIn login) =>
+		    dml (DELETE FROM session
+				WHERE Id = {[login.Session]}
+				  AND Key = {[login.Key]})
+		  | _ => return ());
                 redirect M.afterLogout
 
             fun newSession identO =
@@ -337,10 +346,10 @@ functor Make(M: sig
 
             case cur of
                 Some cur => return {Status = (M.CtlDisplay.formatUser <xml>{[cur]}</xml>),
-                                    Other = {Url = (url (logout ())), 
-                                             Xml = (M.CtlDisplay.formatLogout (url (logout ())))}}
+                                    Other = {Url = None,
+                                             Xml = (M.CtlDisplay.formatLogout logout)}}
               | None => return {Status = (M.CtlDisplay.formatLogon (logon (show here))),
-                                Other = {Url = (url (signup (show here))),
+                                Other = {Url = Some (url (signup (show here))),
                                          Xml = (M.CtlDisplay.formatSignup (url (signup (show here))))}}
         end
 
