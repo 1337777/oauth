@@ -86,7 +86,11 @@ functor Make(M: sig
         if b then
             return M.afterLogout
         else
-            currentUrl
+            b <- currentUrlHasQueryString;
+            if b then
+                return M.afterLogout
+            else
+                currentUrl
 
     val current =
         login <- getCookie auth;
@@ -126,6 +130,14 @@ functor Make(M: sig
 		  | _ => return ());
                 redirect M.afterLogout
 
+            fun newSession identO =
+                ses <- nextval sessionIds;
+                now <- now;
+                key <- rand;
+                dml (INSERT INTO session (Id, Key, Identifier, Expires)
+                     VALUES ({[ses]}, {[key]}, {[identO]}, {[addSeconds now M.sessionLifetime]}));
+                return {Session = ses, Key = key}
+
             fun signupDetails after =
                 let
                     fun finishSignup uid data =
@@ -155,6 +167,9 @@ functor Make(M: sig
                                         case cols of
                                             Failure s => return (Some s)
                                           | Success cols =>
+                                            dml (DELETE FROM session
+                                                 WHERE Id = {[ses.Session]});
+                                            ses <- newSession (Some ident);
                                             setCookie auth {Value = LoggedIn ({User = uid} ++ ses),
                                                             Expires = None,
                                                             Secure = M.secureCookies};
@@ -204,9 +219,12 @@ functor Make(M: sig
                             if invalid then
                                 error <xml>Invalid or expired session</xml>
                             else
-                                dml (UPDATE session
-                                     SET Identifier = {[Some ident]}
+                                dml (DELETE FROM session
                                      WHERE Id = {[signup.Session]});
+                                ses <- newSession (Some ident);
+                                setCookie auth {Value = SigningUp ses,
+                                                Expires = None,
+                                                Secure = M.secureCookies};
                                 signupDetails after
                       | Some (LoggedIn login) =>
                         if login.Session <> ses then
@@ -219,9 +237,12 @@ functor Make(M: sig
                             if invalid then
                                 error <xml>Invalid or expired session</xml>
                             else
-                                dml (UPDATE session
-                                     SET Identifier = {[Some ident]}
+                                dml (DELETE FROM session
                                      WHERE Id = {[login.Session]});
+                                ses <- newSession (Some ident);
+                                setCookie auth {Value = LoggedIn ({User = login.User} ++ ses),
+                                                Expires = None,
+                                                Secure = M.secureCookies};
                                 redirect (bless after)
                       | None => error <xml>Missing session cookie</xml>
 
@@ -254,14 +275,6 @@ functor Make(M: sig
                         redirect (bless after)
                   | None => error <xml>Missing session cookie</xml>
 
-            fun newSession () =
-                ses <- nextval sessionIds;
-                now <- now;
-                key <- rand;
-                dml (INSERT INTO session (Id, Key, Identifier, Expires)
-                     VALUES ({[ses]}, {[key]}, NULL, {[addSeconds now M.sessionLifetime]}));
-                return {Session = ses, Key = key}
-
             fun logon after r =
                 ident <- oneOrNoRowsE1 (SELECT (identity.Identifier)
                                         FROM identity
@@ -270,7 +283,7 @@ functor Make(M: sig
                 case ident of
                     None => error <xml>Username not found</xml>
                   | Some ident =>
-                    ses <- newSession ();
+                    ses <- newSession None;
                     setCookie auth {Value = LoggedIn (r ++ ses),
                                     Expires = None,
                                     Secure = M.secureCookies};
@@ -285,7 +298,7 @@ functor Make(M: sig
                         error <xml>Login with your identity provider failed: {[msg]}</xml>
 
             fun doSignup after r =
-                ses <- newSession ();
+                ses <- newSession None;
                 setCookie auth {Value = SigningUp ses,
                                 Expires = None,
                                 Secure = M.secureCookies};
