@@ -569,12 +569,8 @@ uw_Basis_string uw_OpenidFfi_xor(uw_context ctx, uw_Basis_string s1, uw_Basis_st
   return base64(ctx, bufO, len1);
 }
 
-uw_Basis_bool __attribute__((optimize(0))) uw_OpenidFfi_secCmp(uw_context ctx, uw_Basis_string s1, uw_Basis_string s2) {
-  int i, x = 0, len1 = strlen(s1);
-  if (len1 != strlen(s2)) return 0;
-  for (i = 0; i < len1; ++i)
-	  x |= s1[i] ^ s2[i];
-  return x == 0;
+uw_Basis_bool uw_OpenidFfi_secCmp(uw_context ctx, uw_Basis_string s1, uw_Basis_string s2) {
+  return uw_streq(s1, s2);
 }
 
 uw_OpenidFfi_inputs uw_OpenidFfi_remode(uw_context ctx, uw_OpenidFfi_outputs out, uw_Basis_string mode) {
