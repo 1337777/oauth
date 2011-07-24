@@ -105,6 +105,10 @@ functor Make(M: sig
     val current : transaction (option user)
     (* Figure out which, if any, user is logged in on this connection. *)
 
+    val renew : transaction (option user)
+    (* Like [current], but also resets the expiration time of the user's
+     * session, if one is found. *)
+
 
     val main : (string -> xbody -> transaction page) -> transaction {Status : xbody,
                                                                      Other : {Url : option url, Xml : xbody}}

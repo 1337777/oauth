@@ -92,7 +92,7 @@ functor Make(M: sig
             else
                 currentUrl
 
-    val current =
+    fun current' tweakSession =
         login <- getCookie auth;
         case login of
             Some (LoggedIn login) =>
@@ -109,10 +109,19 @@ functor Make(M: sig
                                     WHERE identity.User = {[login.User]}
                                       AND identity.Identifier = {[ident]});
                  if valid then
+                     tweakSession login.Session;
                      return (Some login.User)
                  else
                      error <xml>Session not authorized to act as user</xml>)
           | _ => return None
+
+    val current = current' (fn _ => return ())
+
+    val renew = current' (fn id =>
+                             now <- now;
+                             dml (UPDATE session
+                                  SET Expires = {[addSeconds now M.sessionLifetime]}
+                                  WHERE Id = {[id]}))
 
     fun validUser s = String.length s > 0 && String.length s < 20
                       && String.all Char.isAlnum s
@@ -125,8 +134,8 @@ functor Make(M: sig
 		(case login of
 		    Some (LoggedIn login) =>
 		    dml (DELETE FROM session
-				WHERE Id = {[login.Session]}
-				  AND Key = {[login.Key]})
+                         WHERE Id = {[login.Session]}
+                           AND Key = {[login.Key]})
 		  | _ => return ());
                 redirect M.afterLogout
 
