@@ -8,7 +8,7 @@ structure U = OpenidUser.Make(struct
                                   val secureCookies = False
                                   val association = Openid.Stateful {AssociationType = Openid.HMAC_SHA256,
                                                                      AssociationSessionType = Openid.NoEncryption}
-                                  val realm = None
+                                  val realm = Some "http://localhost:8080/"
 
                                   val creationState =
                                       n <- source "";
