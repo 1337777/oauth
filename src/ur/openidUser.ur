@@ -93,7 +93,9 @@ functor Make(M: sig
                 currentUrl
 
     val wrongUser =
-        error <xml>Session not authorized to act as user.  Did your OpenID provider log you in as a different user than you expected?  Try logging out at your provider first, then <a href={M.afterLogout}>return to the home page</a>.</xml>
+        return <xml><body>
+          Username mismatch!  Did your OpenID provider log you in as a different user than you expected?  Try logging out at your provider first, then <a href={M.afterLogout}>return to the home page</a>.
+        </body></xml>
 
     fun current' tweakSession =
         login <- getCookie auth;
