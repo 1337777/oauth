@@ -204,12 +204,12 @@ functor Make(M: sig
                         <tr> <td><dyn signal={b <- M.ready cs;
                                               return (if b then
                                                           <xml><button value="Create Account"
-                                                                       onclick={uid <- get uid;
-                                                                                data <- Basis.current (M.tabulate cs);
-                                                                                res <- rpc (finishSignup uid data);
-                                                                                case res of
-                                                                                    None => redirect (bless after)
-                                                                                  | Some msg => alert msg}/></xml>
+                                                                       onclick={fn _ => uid <- get uid;
+                                                                                   data <- Basis.current (M.tabulate cs);
+                                                                                   res <- rpc (finishSignup uid data);
+                                                                                   case res of
+                                                                                       None => redirect (bless after)
+                                                                                     | Some msg => alert msg}/></xml>
                                                       else
                                                           <xml/>)}/></td> </tr>
                       </table>
