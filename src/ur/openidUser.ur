@@ -66,6 +66,8 @@ functor Make(M: sig
 
     table user : ([Id = user] ++ M.cols)
       PRIMARY KEY Id
+    con user_hidden_constraints = []
+    constraint [] ~ user_hidden_constraints
 
     table identity : {User : user, Identifier : string}
       PRIMARY KEY (User, Identifier)

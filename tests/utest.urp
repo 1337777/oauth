@@ -7,5 +7,7 @@ allow url http://*
 allow url https://*
 allow url /*
 prefix http://localhost:8080/
+safeGet main
+safeGet U/signup
 
 utest

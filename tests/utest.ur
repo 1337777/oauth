@@ -33,17 +33,17 @@ structure U = OpenidUser.Make(struct
                                   structure CtlDisplay = OpenidUser.DefaultDisplay
                               end)
 
-fun wrap title body =
+fun wrap titl bod =
     userStuff <- U.main wrap;
     return <xml><head>
-      <title>{[title]}</title>
+      <title>{[titl]}</title>
     </head><body>
       {userStuff.Status}<br/>
       {userStuff.Other.Xml}
 
-      <h1>{[title]}</h1>
+      <h1>{[titl]}</h1>
 
-      {body}
+      {bod}
     </body></xml>
 
 fun main () =
