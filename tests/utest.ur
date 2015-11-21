@@ -28,7 +28,7 @@ structure U = OpenidUser.Make(struct
 
                                   val formClass = inputs
 
-                                  val fakeId = None
+                                  val fakeId = Some "localh#melocal" (*None*)
 
                                   structure CtlDisplay = OpenidUser.DefaultDisplay
                               end)
@@ -51,3 +51,37 @@ fun main () =
     wrap "Main page" (case whoami of
                           None => <xml>I don't think you're logged in.</xml>
                         | Some whoami => <xml>Apparently you are <b>{[whoami]}</b>!</xml>)
+
+structure OAuthInst = Openid.OAuth (struct
+					val endpointAuth = "https://github.com/login/oauth/authorize"
+					val endpointToken = "https://github.com/login/oauth/access_token"
+					val clientId = "eff6bdf9d28da17b0f2c"
+					val clientSecret = "7700323c365d3c5b12096cddb94deb28f0d9a937"
+					val sessionLifetime = 3600
+				    end)
+
+fun index () =
+    let
+	fun after id key =
+	    user <- OAuthInst.directApi id key "https://api.github.com/user";
+	    return <xml><body> YOYO ses.Id {[id]}, GOGO ses.Key {[key]} <br/>
+	      USER INFO: {case user of
+			      Some s => txt s
+			    | None => txt "[ERROR]"}
+		</body></xml>
+
+	fun opCallback after res =
+            case res of
+                OAuthInst.CanceledAuth => error <xml>You canceled the login process.</xml>
+              | OAuthInst.FailureAuth s => error <xml>Login failed: {[s]}</xml>
+              | OAuthInst.AuthorizedAs ses => redirect (url (after ses.Id ses.Key))
+
+	fun authorize () =
+	    msg <- OAuthInst.authorize (opCallback after)
+				       {Scope = "user"};
+            error <xml>Login with your identity provider failed: {[msg]}</xml>
+    in
+	return <xml><body>
+          <form><submit value="Authorize" action={authorize}/></form></body>
+        </xml>
+    end

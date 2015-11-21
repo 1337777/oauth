@@ -346,6 +346,94 @@ uw_OpenidFfi_outputs uw_OpenidFfi_direct(uw_context ctx, uw_Basis_string url, uw
   return buf;
 }
 
+uw_OpenidFfi_outputs uw_OpenidFfi_directToken(uw_context ctx, uw_Basis_string url, uw_OpenidFfi_inputs inps) {
+  uw_buffer *buf = uw_malloc(ctx, sizeof(uw_buffer));
+  CURL *c = curl(ctx);
+  CURLcode code;
+  struct curl_slist *headers = NULL;
+  
+  uw_buffer_init(BUF_MAX, buf, BUF_INIT);
+
+  uw_buffer_append(inps, "", 1);
+
+  curl_easy_reset(c);
+  // curl_easy_setopt(c, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
+  curl_easy_setopt(c, CURLOPT_URL, url);
+  curl_easy_setopt(c, CURLOPT_POSTFIELDS, inps->start);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_buffer_data);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, buf);
+  curl_slist_append(headers, "Content-type: application/x-www-form-urlencoded");
+  curl_slist_append(headers, "Accept: application/x-www-form-urlencoded");
+  uw_push_cleanup(ctx, (void (*)(void *))curl_slist_free_all, headers);
+  curl_easy_setopt(c, CURLOPT_USERAGENT, "curl");
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
+  
+  code = curl_easy_perform(c);
+  uw_pop_cleanup(ctx);
+
+  uw_buffer_append(buf, "", 1);
+
+  if (code) {
+    uw_buffer_reset(buf);
+    uw_buffer_append(buf, curl_failure, sizeof curl_failure);
+  } else {
+    char *s;
+
+    s = buf->start;
+    while (*s) {
+      char *colon = strchr(s, '='), *newline;
+
+      if (!colon) {
+        *s = 0;
+        break;
+      }
+
+      *colon = 0;
+
+      newline = strchr(colon+1, '&');
+
+      if (!newline)
+        break;
+
+      *newline = 0;
+      s = newline+1;
+    }
+  }
+
+  return buf;
+}
+
+uw_Basis_string uw_OpenidFfi_directApi(uw_context ctx, uw_Basis_string url) {
+  uw_buffer *buf = uw_malloc(ctx, sizeof(uw_buffer));
+  CURL *c = curl(ctx);
+  CURLcode code;
+  struct curl_slist *headers = NULL;
+  
+  uw_buffer_init(BUF_MAX, buf, BUF_INIT);
+
+  curl_easy_reset(c);
+  // curl_easy_setopt(c, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
+  curl_easy_setopt(c, CURLOPT_URL, url);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_buffer_data);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, buf);
+  // curl_slist_append(headers, "Accept: application/json");
+  curl_easy_setopt(c, CURLOPT_USERAGENT, "curl"); /* REQUIRED BY GITHUB*/
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
+  uw_push_cleanup(ctx, (void (*)(void *))curl_slist_free_all, headers);
+  
+  
+  code = curl_easy_perform(c);
+  uw_pop_cleanup(ctx);
+
+  uw_buffer_append(buf, "PPP7", 5);
+
+  if (code) {
+    uw_buffer_reset(buf);
+  }
+
+  return buf->start;
+}
+
 static uw_Basis_string deurl(uw_context ctx, uw_Basis_string s) {
   uw_Basis_string r = uw_malloc(ctx, strlen(s)), s2 = r;
 

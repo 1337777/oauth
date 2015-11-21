@@ -14,6 +14,8 @@ val getOutput : outputs -> string -> option string
 val printOutputs : outputs -> transaction {}
 
 val direct : string -> inputs -> transaction outputs
+val directToken : string -> inputs -> transaction outputs
+val directApi : string -> transaction (option string)
 val indirect : queryString -> transaction outputs
 
 val sha1 : string -> string

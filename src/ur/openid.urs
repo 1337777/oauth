@@ -132,3 +132,22 @@ val authenticate : (authentication -> transaction page)
                         * specific URL, which is the authentication-specific URL
                         * that the library always chooses automatically. *)}
                    -> transaction string
+
+functor OAuth (M: sig
+		   val endpointAuth : string (*https://github.com/login/oauth/authorize*)
+		   val endpointToken : string (*https://github.com/login/oauth/access_token*)
+		   val clientId : string
+		   val clientSecret : string
+		   val sessionLifetime : int
+	       end) : sig
+
+datatype authorization =
+         AuthorizedAs of {Id : int, Key : int}
+       | CanceledAuth
+       | FailureAuth of string	      
+
+val authorize : (authorization -> transaction page) (*redirect_uri*)
+		-> {Scope : string}
+                -> transaction string
+val directApi : int -> int -> string -> transaction (option string)
+end

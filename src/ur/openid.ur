@@ -331,6 +331,124 @@ fun verifySig os atype key =
                   | Some (left, _) => return (Some ("openid.signed is missing required fields: " ^ show left))
             end
 
+
+		    
+functor OAuth (M: sig
+		   val endpointAuth : string (*https://github.com/login/oauth/authorize*)
+		   val endpointToken : string (*https://github.com/login/oauth/access_token*)
+		   val clientId : string
+		   val clientSecret : string
+		   val sessionLifetime : int
+	       end) = struct
+
+    sequence sessionIds
+	     
+    table session : {Id : int, Key : int, Identifier : option string, Expires : time, Token : option string}
+			PRIMARY KEY Id
+		    
+    datatype authorization =
+             AuthorizedAs of {Id : int, Key : int}
+	   | CanceledAuth
+	   | FailureAuth of string
+			    
+    fun authorize after r =
+	let
+	fun newSession identO =
+            ses <- nextval sessionIds;
+            now <- now;
+            key <- rand;
+            dml (INSERT INTO session (Id, Key, Identifier, Expires, Token)
+                 VALUES ({[ses]}, {[key]}, {[identO]}, {[addSeconds now M.sessionLifetime]}, {[None]}));
+            return {Id = ses, Key = key}
+
+	fun exchangeCode code =
+	    is <- createInputs;
+	    OpenidFfi.addInput is "code" code;
+	    OpenidFfi.addInput is "client_id" M.clientId;
+	    OpenidFfi.addInput is "client_secret" M.clientSecret;
+	    OpenidFfi.directToken M.endpointToken is
+	    
+       fun returnToAuth (qs : option queryString) =
+            case qs of
+                None => after (FailureAuth "Empty query string for OAuth callback")
+              | Some qs =>
+                os <- OpenidFfi.indirect qs;
+                case OpenidFfi.getOutput os "error" of
+                    Some v => after (FailureAuth ("Authorization failed: no sucessful grant: " ^ v))
+                  | None =>
+                    case OpenidFfi.getOutput os "state" of
+                        None => after (FailureAuth "No state in response")
+                      | Some state =>
+			case String.split state #"@" of
+			    None => after (FailureAuth "Invalid 'stateFull' field")
+			  | Some (stateIndex, state) =>
+			    case read stateIndex of
+				None => after (FailureAuth "Invalid 'stateIndex' field")
+			      | Some stateIndex =>
+				case read state of
+				    None => after (FailureAuth "Invalid 'statePass' field")
+				  | Some state =>
+				    case OpenidFfi.getOutput os "code" of
+					None => after (FailureAuth "Missing code in response")
+				      | Some code =>
+					errO <- verifyStateAuth os stateIndex state;
+					case errO of
+					    Some s => after (FailureAuth s)
+					  | None => os2 <- exchangeCode code;
+					    os2 <- (case OpenidFfi.getOutput os2 "error" of
+							Some v => exchangeCode code (*github bug? retry*)
+						      | None => return os2); 
+					    case OpenidFfi.getOutput os2 "error" of
+						Some v => after (FailureAuth ("Authorization failed: directToken error for code " ^ code ^ " - Description:" ^ v))
+					      | None => case (OpenidFfi.getOutput os2 "access_token", OpenidFfi.getOutput os2 "scope", OpenidFfi.getOutput os2 "token_type") of
+							    (Some token, Some token_scope, Some token_type) =>
+							    dml (UPDATE session
+								 SET Identifier = {[Some code]},
+								   Token = {[Some token]}
+								 WHERE Id = {[stateIndex]});
+							    after (AuthorizedAs {Id = stateIndex, Key = state})
+							  | (None, _, _) => after (FailureAuth ("Authorization failed: no token in response "))
+							  | (_, None, _) => after (FailureAuth ("Authorization failed: no token_scope in response"))
+							  | _ => after (FailureAuth ("Authorization failed: no token_type in response"))
+								 
+       and verifyStateAuth os stateIndex state =
+	   valid <- oneRowE1 (SELECT COUNT( * ) > 0
+                              FROM session
+                              WHERE session.Id = {[stateIndex]}
+                                AND session.Key = {[state]});
+           if valid then
+               return None
+           else
+	       return (Some "That state is invalid or expired.")
+	       
+	val begin = case String.index M.endpointAuth #"?" of
+                        None => "?"
+                      | Some _ => "&"
+
+    in
+	ses <- newSession None;
+        redirect (bless (M.endpointAuth
+			 ^ begin ^ "client_id=" ^ M.clientId
+                         ^ "&redirect_uri=" ^ show (effectfulUrl returnToAuth)
+			 ^ "&scope=" ^ r.Scope
+			 ^ "&state=" ^ (show ses.Id) ^ "@" ^ (show ses.Key)))
+    end
+
+    fun directApi id key ep =
+	access_token <- oneOrNoRowsE1 (SELECT (session.Token)
+				       FROM session
+				       WHERE session.Id = {[id]} AND session.Key = {[key]});
+	case access_token of
+            Some (Some access_token) => 
+	    res <- OpenidFfi.directApi (ep (*"https://api.github.com/user"*)
+				     ^ "?access_token=" ^ access_token);
+	    (case res of
+		Some res => return (Some res)
+	      | None => return None)
+	  | _ => return None
+					      
+end
+
 fun authenticate after r =
     let
         fun returnTo (qs : option queryString) =
